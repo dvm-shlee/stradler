@@ -19,7 +19,7 @@ stradler-slurm = "stradler.ext.slurm:main"
 stradler-apptainer = "stradler.ext.apptainer:main"
 
 [dependency-groups]
-dev = ["pytest"]
+dev = ["pytest", "ruff==0.15.0"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/stradler"]
