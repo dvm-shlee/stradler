@@ -1,0 +1,10 @@
+{
+  "force": false,
+  "mtimes": {},
+  "named_inputs": {
+    "reference": "extra/ref.txt"
+  },
+  "recipe": "recipe.yaml",
+  "steps": null,
+  "structure": "structure.toml"
+}

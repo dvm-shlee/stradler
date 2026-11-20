@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "config@1.1.0",
+  "title": "stradler project configuration",
+  "description": "The file .stradler/config.toml, as the JSON data model of its parsed content. config@1.1.0 adds the replicas table to config@1.0.0.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "pattern": "^([A-Za-z0-9_-]+@[0-9]+\\.[0-9]+\\.[0-9]+|sha256:[0-9a-f]{64})$",
+      "description": "Schema reference of this file."
+    },
+    "addons": {
+      "type": "object",
+      "description": "Add-ons the project uses, by name.",
+      "propertyNames": {
+        "pattern": "^[A-Za-z0-9_-]+$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "version",
+          "command"
+        ],
+        "properties": {
+          "kind": {
+            "enum": [
+              "scheduler",
+              "container_runtime",
+              "data_handler",
+              "store",
+              "remote"
+            ],
+            "description": "The protocol the add-on implements."
+          },
+          "version": {
+            "type": "string",
+            "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+            "description": "Version of the add-on used by the project."
+          },
+          "command": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Program that implements the protocol."
+          }
+        }
+      }
+    },
+    "stores": {
+      "type": "object",
+      "description": "Logical stores that areas and true sources refer to.",
+      "propertyNames": {
+        "pattern": "^[A-Za-z0-9_-]+$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "addon"
+        ],
+        "properties": {
+          "addon": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "description": "Name of an add-on of kind store or remote."
+          }
+        }
+      }
+    },
+    "true_sources": {
+      "type": "object",
+      "description": "True source of an area's content, by area name.",
+      "propertyNames": {
+        "pattern": "^[A-Za-z0-9_-]+$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "store"
+        ],
+        "properties": {
+          "store": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "description": "Name of the store that holds the authoritative copy."
+          }
+        }
+      }
+    },
+    "pins": {
+      "type": "object",
+      "description": "Workspace pins, by component name.",
+      "propertyNames": {
+        "pattern": "^[A-Za-z0-9_-]+$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ref"
+        ],
+        "properties": {
+          "ref": {
+            "type": "string",
+            "description": "Pinned version, git revision or sha256 digest."
+          }
+        }
+      }
+    },
+    "replicas": {
+      "type": "object",
+      "description": "Declared copies of an area, by area name. Separate from true_sources (which store is authoritative).",
+      "propertyNames": {
+        "pattern": "^[A-Za-z0-9_-]+$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "stores"
+        ],
+        "properties": {
+          "stores": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]+$",
+              "description": "Name of a store defined in stores."
+            },
+            "description": "Stores that must hold a copy of the area's sealed datasets."
+          },
+          "min_copies": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "How many of the declared stores must hold a matching copy (at most len(stores))."
+          }
+        }
+      }
+    }
+  }
+}

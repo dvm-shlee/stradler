@@ -1,0 +1,89 @@
+{
+  "segments": [
+    {
+      "chains": [
+        {
+          "tasks": [
+            {
+              "argv": [
+                "wc",
+                "-l",
+                "texts/a.txt"
+              ],
+              "bindings": {
+                "source": "texts/a.txt"
+              },
+              "level": "file",
+              "outputs": {
+                "counts": "work/a.count"
+              },
+              "status": "planned",
+              "step": "count",
+              "unit": "texts/a.txt"
+            },
+            {
+              "argv": [
+                "write-report",
+                "work/a.count"
+              ],
+              "bindings": {
+                "prev": "work/a.count"
+              },
+              "level": "file",
+              "outputs": {
+                "report": "work/a.report"
+              },
+              "status": "planned",
+              "step": "report",
+              "unit": "texts/a.txt"
+            }
+          ],
+          "unit": "texts/a.txt"
+        },
+        {
+          "tasks": [
+            {
+              "argv": [
+                "wc",
+                "-l",
+                "texts/b.txt"
+              ],
+              "bindings": {
+                "source": "texts/b.txt"
+              },
+              "level": "file",
+              "outputs": {
+                "counts": "work/b.count"
+              },
+              "status": "planned",
+              "step": "count",
+              "unit": "texts/b.txt"
+            },
+            {
+              "argv": [
+                "write-report",
+                "work/b.count"
+              ],
+              "bindings": {
+                "prev": "work/b.count"
+              },
+              "level": "file",
+              "outputs": {
+                "report": "work/b.report"
+              },
+              "status": "planned",
+              "step": "report",
+              "unit": "texts/b.txt"
+            }
+          ],
+          "unit": "texts/b.txt"
+        }
+      ],
+      "level": "file",
+      "steps": [
+        "count",
+        "report"
+      ]
+    }
+  ]
+}

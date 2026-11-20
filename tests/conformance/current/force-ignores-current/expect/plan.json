@@ -1,0 +1,90 @@
+{
+  "segments": [
+    {
+      "chains": [
+        {
+          "tasks": [
+            {
+              "argv": [
+                "wc",
+                "-l",
+                "texts/a.txt"
+              ],
+              "bindings": {
+                "source": "texts/a.txt"
+              },
+              "level": "file",
+              "outputs": {
+                "counts": "work/a.count"
+              },
+              "status": "planned",
+              "step": "count",
+              "unit": "texts/a.txt"
+            }
+          ],
+          "unit": "texts/a.txt"
+        },
+        {
+          "tasks": [
+            {
+              "argv": [
+                "wc",
+                "-l",
+                "texts/b.txt"
+              ],
+              "bindings": {
+                "source": "texts/b.txt"
+              },
+              "level": "file",
+              "outputs": {
+                "counts": "work/b.count"
+              },
+              "status": "planned",
+              "step": "count",
+              "unit": "texts/b.txt"
+            }
+          ],
+          "unit": "texts/b.txt"
+        }
+      ],
+      "level": "file",
+      "steps": [
+        "count"
+      ]
+    },
+    {
+      "chains": [
+        {
+          "tasks": [
+            {
+              "argv": [
+                "sum-counts",
+                "work/a.count,work/b.count"
+              ],
+              "bindings": {
+                "all_counts": [
+                  "work/a.count",
+                  "work/b.count"
+                ]
+              },
+              "expected": 2,
+              "included": 2,
+              "level": "group",
+              "outputs": {
+                "total": "work/example.summarize-total.txt"
+              },
+              "status": "planned",
+              "step": "total",
+              "unit": "group"
+            }
+          ],
+          "unit": "group"
+        }
+      ],
+      "level": "group",
+      "steps": [
+        "total"
+      ]
+    }
+  ]
+}

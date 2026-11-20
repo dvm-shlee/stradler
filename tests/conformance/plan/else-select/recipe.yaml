@@ -1,0 +1,67 @@
+schema: workflow@1.0.0
+name: example.fallback
+family: example
+version: 1.0.0
+purpose: Count the lines of each text file, then report with a fallback when a count is not on disk.
+containers:
+  tools:
+    kind: image
+    image: tools-image
+    pin:
+      version: 1.0.0
+      sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+inputs:
+  dataset: texts
+  filter:
+    include:
+      - "*.txt"
+steps:
+  - name: count
+    purpose: Count the lines of one file.
+    level: file
+    container: tools
+    command:
+      - wc
+      - -l
+      - ${source}
+    in:
+      - as: source
+        from: inputs
+    out:
+      - name: counts
+        path: work/{stem}.count
+  - name: total
+    purpose: Add up the counts of all files.
+    level: group
+    container: none
+    command:
+      - sum-counts
+      - ${all_counts}
+    in:
+      - as: all_counts
+        from: count
+        select:
+          for_each: file
+    out:
+      - name: total
+        path: work/{workflow}-total.txt
+  - name: report
+    purpose: Report the total when it is on disk, else report all counts of the group.
+    level: group
+    container: none
+    command:
+      - write-report
+      - ${basis}
+    in:
+      - as: basis
+        from: total
+        select:
+          condition:
+            exists: total
+        else:
+          from: count
+          select:
+            for_each: file
+    out:
+      - name: report
+        path: work/{workflow}.report

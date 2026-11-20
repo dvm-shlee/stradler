@@ -1,0 +1,28 @@
+{
+  "argv": [
+    "wc",
+    "-l",
+    "texts/a.txt"
+  ],
+  "input_components": {
+    "command": "sha256:364746e065cdae29a2c649b8e33a323f2d920ab944a0d9de2905f5bc597dbf63",
+    "container": "sha256:60e05bd1b195af2f94112fa7197a5c88289058840ce7c6df9693756bc6250f55",
+    "inputs": "sha256:151c0bfb36f21e1d3a571a01e90b5acf2dda027933492634e3f711e72384e7c8",
+    "workflow": "sha256:a53d09c1b051160af493452263907262dc99bc910f60f2f12e48fb34c493d441"
+  },
+  "input_digest": "sha256:9d87eaf459acba8c3062c0e5a831d14f95e6fb1f2ef87245130f90204f46dab5",
+  "level": "file",
+  "output_stats": {
+    "counts": {
+      "mtime_ns": 1767225600000000000,
+      "size": 2
+    }
+  },
+  "outputs": {
+    "counts": "work/a.count"
+  },
+  "record_version": 1,
+  "status": "failed",
+  "step": "count",
+  "unit": "texts/a.txt"
+}

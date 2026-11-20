@@ -1,0 +1,95 @@
+{
+  "segments": [
+    {
+      "chains": [
+        {
+          "tasks": [
+            {
+              "argv": [
+                "wc",
+                "-l",
+                "texts/a.txt"
+              ],
+              "bindings": {
+                "source": "texts/a.txt"
+              },
+              "level": "file",
+              "outputs": {
+                "counts": "work/a.count"
+              },
+              "reason": "existing output in a sealed or immutable area; it is never removed",
+              "status": "not-run",
+              "step": "count",
+              "unit": "texts/a.txt"
+            }
+          ],
+          "unit": "texts/a.txt"
+        },
+        {
+          "tasks": [
+            {
+              "argv": [
+                "wc",
+                "-l",
+                "texts/b.txt"
+              ],
+              "bindings": {
+                "source": "texts/b.txt"
+              },
+              "level": "file",
+              "outputs": {
+                "counts": "work/b.count"
+              },
+              "reason": "task is current",
+              "status": "skip",
+              "step": "count",
+              "unit": "texts/b.txt"
+            }
+          ],
+          "unit": "texts/b.txt"
+        }
+      ],
+      "level": "file",
+      "steps": [
+        "count"
+      ]
+    },
+    {
+      "chains": [
+        {
+          "tasks": [
+            {
+              "bindings": {
+                "all_counts": [
+                  "work/b.count"
+                ]
+              },
+              "expected": 2,
+              "included": 1,
+              "level": "group",
+              "missing": [
+                {
+                  "reason": "upstream task did not run",
+                  "step": "count",
+                  "unit": "texts/a.txt"
+                }
+              ],
+              "outputs": {
+                "total": "work/example.summarize-total.txt"
+              },
+              "reason": "strict barrier, 1/2 upstream units available",
+              "status": "not-run",
+              "step": "total",
+              "unit": "group"
+            }
+          ],
+          "unit": "group"
+        }
+      ],
+      "level": "group",
+      "steps": [
+        "total"
+      ]
+    }
+  ]
+}

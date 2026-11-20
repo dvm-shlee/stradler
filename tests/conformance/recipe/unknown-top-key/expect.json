@@ -1,0 +1,9 @@
+{
+  "accept": false,
+  "errors": [
+    {
+      "code": "key.unknown",
+      "path": "extra"
+    }
+  ]
+}

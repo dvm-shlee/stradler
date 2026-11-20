@@ -1,0 +1,27 @@
+{
+  "argv": [
+    "sum-counts",
+    "work/a.count,work/b.count"
+  ],
+  "input_components": {
+    "command": "sha256:a2d2f46731331baf58d4e18617064bceb9730da955273c2fd101ea4765125567",
+    "container": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "inputs": "sha256:4579c72415093e43797dc45ef41778a5a1e583d96cb1a6a0c789f68c4cc1741a",
+    "workflow": "sha256:a53d09c1b051160af493452263907262dc99bc910f60f2f12e48fb34c493d441"
+  },
+  "input_digest": "sha256:fb021bffb673e10cc2dafc2f7387bc6e598baec231491fd5eff2aa03cc66b3f2",
+  "level": "group",
+  "output_stats": {
+    "total": {
+      "mtime_ns": 1767225600000000000,
+      "size": 2
+    }
+  },
+  "outputs": {
+    "total": "work/example.summarize-total.txt"
+  },
+  "record_version": 1,
+  "status": "ok",
+  "step": "total",
+  "unit": "group"
+}

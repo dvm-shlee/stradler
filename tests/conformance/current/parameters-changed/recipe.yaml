@@ -1,0 +1,47 @@
+schema: workflow@1.0.0
+name: example.summarize
+family: example
+version: 1.0.0
+purpose: Count the lines of each text file, then add the counts.
+containers:
+  tools:
+    kind: image
+    image: tools-image
+    pin:
+      version: 1.0.0
+      sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+inputs:
+  dataset: texts
+  filter:
+    include:
+      - "*.txt"
+steps:
+  - name: count
+    purpose: Count the lines of one file.
+    level: file
+    container: tools
+    command:
+      - wc2
+      - -l
+      - ${source}
+    in:
+      - as: source
+        from: inputs
+    out:
+      - name: counts
+        path: work/{stem}.count
+  - name: total
+    purpose: Add up the counts of all files.
+    level: group
+    container: none
+    command:
+      - sum-counts
+      - ${all_counts}
+    in:
+      - as: all_counts
+        from: count
+        select:
+          for_each: file
+    out:
+      - name: total
+        path: work/{workflow}-total.txt

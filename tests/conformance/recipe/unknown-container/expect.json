@@ -1,0 +1,9 @@
+{
+  "accept": false,
+  "errors": [
+    {
+      "code": "ref.unknown",
+      "path": "steps[0].container"
+    }
+  ]
+}

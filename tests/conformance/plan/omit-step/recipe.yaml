@@ -1,0 +1,58 @@
+schema: workflow@1.0.0
+name: example.omitted
+family: example
+version: 1.0.0
+purpose: Count the lines of each text file, then report with a fallback when a count is not on disk.
+containers:
+  tools:
+    kind: image
+    image: tools-image
+    pin:
+      version: 1.0.0
+      sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+inputs:
+  dataset: texts
+  filter:
+    include:
+      - "*.txt"
+steps:
+  - name: count
+    purpose: Count the lines of one file.
+    level: file
+    container: tools
+    command:
+      - wc
+      - -l
+      - ${source}
+    in:
+      - as: source
+        from: inputs
+    out:
+      - name: counts
+        path: work/{stem}.count
+  - name: note
+    purpose: A step the distribution leaves out of the run.
+    level: file
+    container: none
+    command:
+      - write-note
+      - ${source}
+    in:
+      - as: source
+        from: inputs
+    out:
+      - name: note
+        path: work/{stem}.note
+  - name: report
+    purpose: Report the count of one file.
+    level: file
+    container: none
+    command:
+      - write-report
+      - ${prev}
+    in:
+      - as: prev
+        from: count
+    out:
+      - name: report
+        path: work/{stem}.report

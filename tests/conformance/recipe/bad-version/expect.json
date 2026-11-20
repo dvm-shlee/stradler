@@ -1,0 +1,9 @@
+{
+  "accept": false,
+  "errors": [
+    {
+      "code": "value.invalid",
+      "path": "version"
+    }
+  ]
+}

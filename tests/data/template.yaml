@@ -1,0 +1,74 @@
+# Sample project template (strict YAML subset)
+name: sample
+version: 0.1.0
+config:
+  addons:
+    bids:
+      kind: data_handler
+      version: 0.1.0
+      command: stradler-handler-bids
+    checkpoint:
+      kind: data_handler
+      version: 0.1.0
+      command: stradler-handler-checkpoint
+    nas:
+      kind: store
+      version: 0.1.0
+      command: stradler-store-nas
+  stores:
+    shared-sif:
+      addon: nas
+  pins:
+    stradler:
+      ref: 0.1.0a1
+areas:
+  rawdata:
+    role: input
+    path: rawdata
+    handler: bids
+    mutability: immutable
+    manifest: dataset_description.json
+    agent:
+      search: true
+      read: true
+      write: false
+  sourcedata:
+    role: input
+    path: sourcedata
+    mutability: immutable
+    agent:
+      search: true
+      read: false
+      write: false
+  checkpoints:
+    role: output
+    path: checkpoints
+    handler: checkpoint
+    mutability: mutable
+    deletable_after: [derivatives]
+  derivatives:
+    role: output
+    path: derivatives
+    handler: bids
+    mutability: sealed
+    manifest: dataset_description.json
+  code:
+    role: code
+    path: code
+    mutability: mutable
+  images:
+    role: image
+    store: shared-sif
+    mutability: immutable
+  records:
+    role: record
+    path: records
+    mutability: mutable
+  agent:
+    role: agent
+    path: agent
+    mutability: mutable
+    agent:
+      search: true
+      read: true
+      write: true

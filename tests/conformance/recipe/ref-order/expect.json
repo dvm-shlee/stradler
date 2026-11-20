@@ -1,0 +1,9 @@
+{
+  "accept": false,
+  "errors": [
+    {
+      "code": "ref.order",
+      "path": "steps[1].in[0].from"
+    }
+  ]
+}

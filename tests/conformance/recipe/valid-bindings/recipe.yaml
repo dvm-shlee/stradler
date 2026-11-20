@@ -1,0 +1,56 @@
+schema: workflow@1.0.0
+name: example.report
+family: example
+version: 1.0.0
+purpose: Count lines, then write one report from several kinds of input.
+inputs:
+  dataset: texts
+  filter:
+    include:
+      - "*.txt"
+steps:
+  - name: count
+    purpose: Count the lines of one file.
+    level: file
+    container: none
+    command:
+      - wc
+      - -l
+      - ${source}
+    in:
+      - as: source
+        from: inputs
+    out:
+      - name: counts
+        path: work/{stem}.count
+  - name: report
+    purpose: Write the report.
+    level: group
+    container: none
+    command:
+      - write-report
+      - ${settings}
+      - ${reference}
+      - ${first}
+      - ${all}
+      - ${raw}
+    in:
+      - as: settings
+        from: fixed
+        path: config/settings.txt
+      - as: reference
+        from: named
+        name: reference
+      - as: first
+        from: count
+        select:
+          pick: first_file
+      - as: all
+        from: count
+        select:
+          for_each: file
+      - as: raw
+        from: inputs
+    out:
+      - name: report
+        path: work/{workflow}.txt

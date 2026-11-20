@@ -1,0 +1,134 @@
+{
+  "segments": [
+    {
+      "chains": [
+        {
+          "tasks": [
+            {
+              "argv": [
+                "make-marker",
+                "texts/a.txt",
+                "work/a.marker"
+              ],
+              "bindings": {
+                "source": "texts/a.txt"
+              },
+              "level": "file",
+              "outputs": {
+                "marker": "work/a.marker"
+              },
+              "reason": "no ok record",
+              "status": "planned",
+              "step": "prep",
+              "unit": "texts/a.txt"
+            },
+            {
+              "argv": [
+                "wc",
+                "-l",
+                "texts/a.txt",
+                "work/a.marker"
+              ],
+              "bindings": {
+                "aux": "work/a.marker",
+                "source": "texts/a.txt"
+              },
+              "level": "file",
+              "outputs": {
+                "counts": "work/a.count"
+              },
+              "status": "planned",
+              "step": "count",
+              "unit": "texts/a.txt"
+            }
+          ],
+          "unit": "texts/a.txt"
+        },
+        {
+          "tasks": [
+            {
+              "argv": [
+                "make-marker",
+                "texts/b.txt",
+                "work/b.marker"
+              ],
+              "bindings": {
+                "source": "texts/b.txt"
+              },
+              "level": "file",
+              "outputs": {
+                "marker": "work/b.marker"
+              },
+              "status": "planned",
+              "step": "prep",
+              "unit": "texts/b.txt"
+            },
+            {
+              "bindings": {
+                "source": "texts/b.txt"
+              },
+              "level": "file",
+              "missing": [
+                {
+                  "reason": "condition not met: output marker does not exist",
+                  "step": "prep",
+                  "unit": "texts/b.txt"
+                }
+              ],
+              "outputs": {
+                "counts": "work/b.count"
+              },
+              "reason": "missing input 'aux': condition not met: output marker does not exist",
+              "status": "not-run",
+              "step": "count",
+              "unit": "texts/b.txt"
+            }
+          ],
+          "unit": "texts/b.txt"
+        }
+      ],
+      "level": "file",
+      "steps": [
+        "prep",
+        "count"
+      ]
+    },
+    {
+      "chains": [
+        {
+          "tasks": [
+            {
+              "bindings": {
+                "all_counts": [
+                  "work/a.count"
+                ]
+              },
+              "expected": 2,
+              "included": 1,
+              "level": "group",
+              "missing": [
+                {
+                  "reason": "upstream task did not run",
+                  "step": "count",
+                  "unit": "texts/b.txt"
+                }
+              ],
+              "outputs": {
+                "total": "work/example.cond-total.txt"
+              },
+              "reason": "partial aggregation below min_units (1/2)",
+              "status": "not-run",
+              "step": "total",
+              "unit": "group"
+            }
+          ],
+          "unit": "group"
+        }
+      ],
+      "level": "group",
+      "steps": [
+        "total"
+      ]
+    }
+  ]
+}

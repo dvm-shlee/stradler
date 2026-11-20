@@ -1,0 +1,12 @@
+{
+  "force": false,
+  "mtimes": {
+    "work/a.count": "2026-02-02T00:00:00Z",
+    "work/b.count": "2026-01-01T00:00:00Z",
+    "work/example.summarize-total.txt": "2026-01-01T00:00:00Z"
+  },
+  "named_inputs": {},
+  "recipe": "recipe.yaml",
+  "steps": null,
+  "structure": "structure.toml"
+}

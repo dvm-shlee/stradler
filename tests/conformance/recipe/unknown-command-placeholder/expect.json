@@ -1,0 +1,9 @@
+{
+  "accept": false,
+  "errors": [
+    {
+      "code": "placeholder.unknown",
+      "path": "steps[1].command[1]"
+    }
+  ]
+}

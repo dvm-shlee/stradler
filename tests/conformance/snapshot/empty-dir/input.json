@@ -1,0 +1,1 @@
+{"empty_dirs":["empty","sub/hollow/deeper","zz"],"files":[{"content":"hello\n","encoding":"utf-8","path":"a.txt"},{"content":"x","encoding":"utf-8","path":"sub/b.txt"}]}

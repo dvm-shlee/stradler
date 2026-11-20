@@ -1,0 +1,9 @@
+{
+  "accept": false,
+  "errors": [
+    {
+      "code": "name.prefix",
+      "path": "name"
+    }
+  ]
+}

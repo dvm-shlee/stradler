@@ -1,0 +1,11 @@
+{
+  "force": false,
+  "mtimes": {},
+  "named_inputs": {},
+  "omit": [
+    "note"
+  ],
+  "recipe": "recipe.yaml",
+  "steps": null,
+  "structure": "structure.toml"
+}

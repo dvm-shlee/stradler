@@ -1,0 +1,16 @@
+schema = "structure@1.0.0"
+
+[areas.texts]
+role = "input"
+path = "texts"
+mutability = "mutable"
+
+[areas.work]
+role = "output"
+path = "work"
+mutability = "sealed"
+
+[areas.records]
+role = "record"
+path = "records"
+mutability = "mutable"

@@ -1,0 +1,29 @@
+# Name reservation: publish stradler 0.0.0 to PyPI and crates.io.
+# Run by hand (Actions -> publish -> Run workflow).
+# PyPI uses trusted publishing (OIDC, no token); crates.io uses the repository secret CARGO_REGISTRY_TOKEN.
+name: publish
+
+on:
+  workflow_dispatch:
+
+jobs:
+  pypi:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+      - run: uv build --out-dir dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  crates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo publish --manifest-path rust/Cargo.toml
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

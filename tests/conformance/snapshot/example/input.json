@@ -1,0 +1,1 @@
+{"empty_dirs":[],"files":[{"content":"hello\n","encoding":"utf-8","path":"a.txt"},{"content":"eA==","encoding":"base64","path":"sub/b.bin"}]}

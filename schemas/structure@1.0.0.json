@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "structure@1.0.0",
+  "title": "stradler project structure",
+  "description": "The file .stradler/structure.toml, as the JSON data model of its parsed content.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "areas"],
+  "properties": {
+    "schema": {"type": "string", "pattern": "^([A-Za-z0-9_-]+@[0-9]+\\.[0-9]+\\.[0-9]+|sha256:[0-9a-f]{64})$", "description": "Schema reference of this file."},
+    "areas": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "The areas of the project, by name.",
+      "propertyNames": {"pattern": "^[A-Za-z0-9_-]+$"},
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["role", "mutability"],
+        "allOf": [
+          {"anyOf": [{"required": ["path"]}, {"required": ["store"]}]},
+          {"not": {"required": ["path", "store"]}}
+        ],
+        "properties": {
+          "role": {"enum": ["input", "output", "code", "recipe", "image", "record", "agent"], "description": "The role of the area."},
+          "path": {
+            "type": "string",
+            "pattern": "^(?!/)(?!\\.$)(?!\\.stradler(/|$))(?!.*(^|/)\\.\\.(/|$)).+$",
+            "description": "Folder of the area, relative to the project root; never empty, absolute, containing .., the root itself or inside .stradler."
+          },
+          "store": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$", "description": "Store (defined in config.toml) where the area's content lives."},
+          "handler": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$", "description": "Data handler that indexes the area."},
+          "mutability": {"enum": ["immutable", "sealed", "mutable"], "description": "Required; no default."},
+          "deletable_after": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"}, "description": "Areas that must exist as sealed snapshots before this area may be deleted."},
+          "manifest": {"type": "string", "pattern": "^[^/\\\\]+\\.json$", "description": "Manifest file name in the root folder of the area (.json only)."},
+          "source": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$", "description": "Store that is the true source of the area's content."},
+          "agent": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Agent access; each key defaults to false.",
+            "properties": {
+              "search": {"type": "boolean", "description": "Query the metadata layer."},
+              "read": {"type": "boolean", "description": "Read file contents."},
+              "write": {"type": "boolean", "description": "Create or change files."}
+            }
+          }
+        }
+      }
+    }
+  }
+}

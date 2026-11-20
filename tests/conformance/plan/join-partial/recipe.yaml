@@ -1,0 +1,61 @@
+schema: workflow@1.0.0
+name: example.cond
+family: example
+version: 1.0.0
+purpose: Count only the files that have a marker, then add the counts.
+inputs:
+  dataset: texts
+  filter:
+    include:
+      - "*.txt"
+steps:
+  - name: prep
+    purpose: Mark one file.
+    level: file
+    container: none
+    command:
+      - make-marker
+      - ${source}
+      - ${marker}
+    in:
+      - as: source
+        from: inputs
+    out:
+      - name: marker
+        path: work/{stem}.marker
+  - name: count
+    purpose: Count the lines of one marked file.
+    level: file
+    container: none
+    command:
+      - wc
+      - -l
+      - ${source}
+      - ${aux}
+    in:
+      - as: source
+        from: inputs
+      - as: aux
+        from: prep
+        select:
+          condition:
+            exists: marker
+    out:
+      - name: counts
+        path: work/{stem}.count
+  - name: total
+    purpose: Add up the counts of the marked files.
+    level: group
+    container: none
+    on_incomplete: partial
+    command:
+      - sum-counts
+      - ${all_counts}
+    in:
+      - as: all_counts
+        from: count
+        select:
+          for_each: file
+    out:
+      - name: total
+        path: work/{workflow}-total.txt

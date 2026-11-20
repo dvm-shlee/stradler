@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stradler@1.0.0",
+  "title": "stradler root marker",
+  "description": "The file stradler.json at the root of a stradler project.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["marker", "spec_version", "project_id", "config_dir"],
+  "properties": {
+    "marker": {"const": "stradler-project", "description": "Marks the directory as a stradler project."},
+    "spec_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$", "description": "Version of the specification the project follows."},
+    "project_id": {"type": "string", "minLength": 1, "description": "Identifier of the project."},
+    "config_dir": {"const": ".stradler", "description": "Location of the .stradler directory, relative to the project root."}
+  }
+}

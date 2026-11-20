@@ -1,0 +1,57 @@
+[
+  {
+    "canonical": "{\"a\":[true,null,\"x\"],\"b\":1}",
+    "digest": "sha256:54a65415ad370228851a1da4b31b6fd42dc58b19a50d35cae759325f7388ce64",
+    "value": {
+      "a": [
+        true,
+        null,
+        "x"
+      ],
+      "b": 1
+    }
+  },
+  {
+    "canonical": "\"quote\\\" slash\\\\ nl\\n tab\\t ctl\\u0001 é\"",
+    "digest": "sha256:10776bb96db0369d08cf38d2f71b493fc1750e2f8358789a831073e60860cdb5",
+    "value": "quote\" slash\\ nl\n tab\t ctl\u0001 é"
+  },
+  {
+    "canonical": "{\"B\":3,\"z\":2,\"é\":1}",
+    "digest": "sha256:c661ba2494e75a901fd73136d564bd40ba8c3651f0a38dd71793e874141c181b",
+    "value": {
+      "B": 3,
+      "z": 2,
+      "é": 1
+    }
+  },
+  {
+    "canonical": "[]",
+    "digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "value": []
+  },
+  {
+    "canonical": "{}",
+    "digest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+    "value": {}
+  },
+  {
+    "canonical": "-7",
+    "digest": "sha256:a770d3270c9dcdedf12ed9fd70444f7c8a95c26cae3cae9bd867499090a2f14b",
+    "value": -7
+  },
+  {
+    "canonical": "{\"n\":9007199254740992}",
+    "digest": "sha256:66c87d9cb3014e05a11baa97df62282d89d425f22ee15816577c84534e2ef1bb",
+    "value": {
+      "n": 9007199254740992
+    }
+  },
+  {
+    "canonical": "[\"sha256:0000000000000000000000000000000000000000000000000000000000000000\"]",
+    "digest": "sha256:88c79367850f5af2657f7f92cb3f7b2001e08fbd686904322efc169cdbac1b38",
+    "value": [
+      "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    ]
+  }
+]

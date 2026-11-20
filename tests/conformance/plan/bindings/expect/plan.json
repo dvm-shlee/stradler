@@ -1,0 +1,120 @@
+{
+  "named_inputs": {
+    "reference": "extra/ref.txt"
+  },
+  "non_loop_inputs": [
+    {
+      "digest": "sha256:f45325a6a619dcbe10f0f3d03a618da46463c74ed2e19b5f220bf8561ced8903",
+      "from": "named",
+      "name": "reference",
+      "relpath": "extra/ref.txt",
+      "unit": "group"
+    },
+    {
+      "digest": "sha256:e28c0add410cef963f23e28594af3165ec468a79e1918bcb8941d55ae8e7a2fc",
+      "from": "fixed",
+      "name": "settings",
+      "relpath": "config/settings.txt",
+      "unit": "group"
+    }
+  ],
+  "segments": [
+    {
+      "chains": [
+        {
+          "tasks": [
+            {
+              "argv": [
+                "wc",
+                "-l",
+                "texts/a.txt"
+              ],
+              "bindings": {
+                "source": "texts/a.txt"
+              },
+              "level": "file",
+              "outputs": {
+                "counts": "work/a.count"
+              },
+              "status": "planned",
+              "step": "count",
+              "unit": "texts/a.txt"
+            }
+          ],
+          "unit": "texts/a.txt"
+        },
+        {
+          "tasks": [
+            {
+              "argv": [
+                "wc",
+                "-l",
+                "texts/b.txt"
+              ],
+              "bindings": {
+                "source": "texts/b.txt"
+              },
+              "level": "file",
+              "outputs": {
+                "counts": "work/b.count"
+              },
+              "status": "planned",
+              "step": "count",
+              "unit": "texts/b.txt"
+            }
+          ],
+          "unit": "texts/b.txt"
+        }
+      ],
+      "level": "file",
+      "steps": [
+        "count"
+      ]
+    },
+    {
+      "chains": [
+        {
+          "tasks": [
+            {
+              "argv": [
+                "write-report",
+                "config/settings.txt",
+                "extra/ref.txt",
+                "work/a.count",
+                "work/a.count,work/b.count",
+                "texts/a.txt,texts/b.txt"
+              ],
+              "bindings": {
+                "all": [
+                  "work/a.count",
+                  "work/b.count"
+                ],
+                "first": "work/a.count",
+                "raw": [
+                  "texts/a.txt",
+                  "texts/b.txt"
+                ],
+                "reference": "extra/ref.txt",
+                "settings": "config/settings.txt"
+              },
+              "expected": 2,
+              "included": 2,
+              "level": "group",
+              "outputs": {
+                "report": "work/example.report.txt"
+              },
+              "status": "planned",
+              "step": "report",
+              "unit": "group"
+            }
+          ],
+          "unit": "group"
+        }
+      ],
+      "level": "group",
+      "steps": [
+        "report"
+      ]
+    }
+  ]
+}

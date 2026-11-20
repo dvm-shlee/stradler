@@ -1,0 +1,9 @@
+{
+  "accept": false,
+  "errors": [
+    {
+      "code": "path.area",
+      "path": "steps[0].out[0].path"
+    }
+  ]
+}

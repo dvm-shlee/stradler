@@ -1,0 +1,10 @@
+[package]
+name = "stradler"
+version = "0.0.0"
+edition = "2021"
+description = "Strata handler: layered data-structure and workflow framework (name reservation, no functionality yet)"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/dvm-shlee/stradler"
+
+[dependencies]

@@ -1,0 +1,9 @@
+{
+  "accept": false,
+  "errors": [
+    {
+      "code": "yaml.unsupported",
+      "path": ""
+    }
+  ]
+}

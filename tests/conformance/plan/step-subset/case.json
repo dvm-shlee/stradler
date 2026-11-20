@@ -1,0 +1,13 @@
+{
+  "force": false,
+  "mtimes": {
+    "work/a.count": "2026-01-01T00:00:00Z",
+    "work/b.count": "2026-01-01T00:00:00Z"
+  },
+  "named_inputs": {},
+  "recipe": "recipe.yaml",
+  "steps": [
+    "total"
+  ],
+  "structure": "structure.toml"
+}

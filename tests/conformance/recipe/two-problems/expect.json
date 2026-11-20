@@ -1,0 +1,13 @@
+{
+  "accept": false,
+  "errors": [
+    {
+      "code": "name.prefix",
+      "path": "name"
+    },
+    {
+      "code": "path.unsafe",
+      "path": "steps[0].out[0].path"
+    }
+  ]
+}

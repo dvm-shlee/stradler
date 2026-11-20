@@ -1,0 +1,10 @@
+{
+  "force": false,
+  "mtimes": {
+    "work/a.marker": "2026-01-01T00:00:00Z"
+  },
+  "named_inputs": {},
+  "recipe": "recipe.yaml",
+  "steps": null,
+  "structure": "structure.toml"
+}
