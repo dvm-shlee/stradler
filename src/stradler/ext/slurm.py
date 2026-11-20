@@ -25,7 +25,7 @@ MEM_RE = re.compile(r"^\d+(\.\d+)?[KMGT]$")
 TIME_RE = re.compile(r"^(\d+-)?\d{1,2}:\d{2}:\d{2}$")
 STATES = ["pending", "running", "completed", "failed", "cancelled", "lost"]
 
-# Native Slurm state -> protocol state (ADDONS 2.5; README mapping table).
+# Native Slurm state -> protocol state (ADDONS 2.5; docs/addons/slurm.md "State mapping" table).
 STATE_MAP = {
     "PENDING": "pending", "CONFIGURING": "pending", "REQUEUED": "pending", "REQUEUE_HOLD": "pending",
     "REQUEUE_FED": "pending", "RESV_DEL_HOLD": "pending", "SPECIAL_EXIT": "pending",
