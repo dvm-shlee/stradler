@@ -65,7 +65,10 @@ def build_parser() -> argparse.ArgumentParser:
     df.add_argument("dataset", help="dataset folder (project-relative or a path inside the project)")
     df.add_argument("paths", nargs="*", help="limit to these paths or directories")
     df.add_argument("--from", dest="from_digest", metavar="sha256:A", help="from snapshot (default: previous of --to)")
-    df.add_argument("--to", dest="to_digest", metavar="sha256:B", help="to snapshot (default: head)")
+    df.add_argument("--to", dest="to_digest", metavar="sha256:B|working",
+                    help="to snapshot (default: head) or 'working' for the dataset folder as it is")
+    df.add_argument("--depth", choices=("size", "sha256"), default="sha256",
+                    help="hashing depth for --to working (default sha256)")
     df.add_argument("--include", action="append", default=[], metavar="GLOB", help="keep paths matching GLOB")
     df.add_argument("--exclude", action="append", default=[], metavar="GLOB", help="drop paths matching GLOB")
     df.add_argument("--stat", action="store_true", help="header and summary only")
@@ -269,7 +272,7 @@ def _diff(args: argparse.Namespace) -> int:
         root = str(prj.root)
         rel = os.path.relpath(abspath, root) if inside else args.dataset
         out = diff_dataset(root, prj.structure, rel, from_digest=args.from_digest, to_digest=args.to_digest,
-                           paths=args.paths, include=args.include, exclude=args.exclude)
+                           paths=args.paths, include=args.include, exclude=args.exclude, depth=args.depth)
     except (ProjectError, DiffError, OSError, ValueError) as e:
         return fail(str(e))
     print(json.dumps(out) if args.json else render_text(out, stat=args.stat))
