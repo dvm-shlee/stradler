@@ -66,9 +66,11 @@ The policy is a record, not a path list: it names versions by content digest and
 | `keep_days` | integer, at least 0, or `null` | yes | Keep a version until D days after it was superseded, that is after the `created` time of the version that names it in `previous` (Decision 3). `null`: no time rule. |
 | `hold_copies` | integer, at least 1 | no, default 1 | How many held locations each kept version must have (Decision 4). |
 | `pins` | array of pin objects, sorted by `snapshot` | yes, may be empty | Versions kept regardless of the other rules. Allowed only when `kind` is `dataset`. |
-| `previous` | digest or `null` | yes | Digest of the earlier revision of the policy for the same scope, `null` for the first. Not digested. |
+| `previous` | digest or `null` | yes | Digest of the head revision of the same scope that this revision follows, `null` for the first. Digested. |
+| `merges` | digest | only on a merge revision | Digest of the second head absorbed by `set --merge` (2.3). Absent on every other revision. Digested. |
 | `created` | timestamp, UTC | yes | When this revision was written. Not digested. |
-| `digest` | digest | yes | Digest of the canonical JSON (WORKFLOWS 10.1, 10.2) of the document without `digest`, `previous` and `created`. |
+| `rules_digest` | digest | yes | Digest of the canonical JSON (WORKFLOWS 10.1, 10.2) of the rule keys alone: the document without `digest`, `created`, `previous`, `merges` and `rules_digest`. |
+| `digest` | digest | yes | Digest of the canonical JSON (WORKFLOWS 10.1, 10.2) of the document without `digest` and `created`. The identity of the revision; it names the file (2.3). |
 
 Pin object: `snapshot` (digest), `snapshot_version` (2), `reason` (free text, at most 200 characters, no paths),
 `added` (timestamp). A pin of a digest that is not in the dataset's lineage is refused by the writer and reported by
@@ -76,13 +78,13 @@ Pin object: `snapshot` (digest), `snapshot_version` (2), `reason` (free text, at
 
 ### 2.3 Where it lives and how it is versioned
 
-Next to the reference documents, in the record area: `<record>/retention/v1/<hex>.json`, `<hex>` the policy digest.
+Next to the reference documents, in the record area: `<record>/retention/v1/<hex>.json`, `<hex>` the hexadecimal part of the revision's `digest`; a writer never overwrites a file.
 Revisions are versioned like snapshot documents (SNAPSHOTS 3.4, 6.2): each change writes a new document whose
 `previous` names the current head of that scope; the head is the revision no other revision of the scope names; a
 writer refuses a second head; documents are never edited in place and are written with a temporary file and a rename.
 The policy history therefore shows when a pin was added or removed. Two heads after a merge of two clones of the
-record area are an error for every command that reads the policy, until `stradler retention set` writes a revision
-whose `previous` names one head and whose rules are the union of both (`--merge`).
+record area are an error for every command that reads the policy, until `stradler retention set --merge` writes a
+revision whose `previous` names one head, whose `merges` names the other, and whose rules are the union of both.
 
 Format changes are additive only: a later `retention_version` may add optional keys; version 1 readers refuse keys
 they do not know (SCHEMAS 1 convention).
@@ -93,7 +95,7 @@ they do not know (SCHEMAS 1 convention).
 |---|---|
 | `stradler retention show <dataset>\|--area A [--json]` | The head policy of the scope, its revision lineage, and the effective rules for a dataset (area and dataset combined). |
 | `stradler retention set <dataset>\|--area A [--keep-last N\|--no-keep-last] [--keep-days D\|--no-keep-days] [--hold-copies K] [--merge]` | Writes a new revision. |
-| `stradler retention pin <dataset> sha256:<hex> --reason TEXT` / `unpin <dataset> sha256:<hex>` | Writes a new revision with the pin added or removed. |
+| `stradler retention pin <dataset> sha256:<hex> --reason TEXT` / `unpin <dataset> sha256:<hex>` / `pin --from-run <run>` | Writes a new revision with the pin added or removed; `--from-run` pins the input versions named by a run record (decision 13). |
 | `stradler retention check [<dataset>...] [--area A] [--json]` | Evaluates every version of each lineage (section 2.5). |
 
 Every write also writes a content record (COD 12) with `op` `retention_set` and the policy digest; it holds no paths.
