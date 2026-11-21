@@ -41,9 +41,14 @@ The policy is a record, not a path list. It names versions by content digest and
 | `keep_days` | integer, at least 0, or `null` | yes | Keep a version until D days after it was superseded. The clock starts at the `created` time of the version whose `previous` names it. `null` means no time rule. |
 | `hold_copies` | integer, at least 1 | no, default `1` | How many held locations each kept version must have. |
 | `pins` | array of pin objects, sorted by `snapshot` | yes, may be empty | Versions kept regardless of the other rules. Must be empty when `scope.kind` is `area`. |
-| `previous` | digest or `null` | yes | Digest of the earlier revision of the policy for the same scope; `null` for the first revision. Not digested. |
-| `created` | timestamp, UTC | yes | When this revision was written. Not digested. |
-| `digest` | digest | yes | Digest of the canonical JSON (WORKFLOWS 10.1, 10.2) of the document without `digest`, `previous` and `created`. |
+| `previous` | digest or `null` | yes | Digest of the earlier revision of the policy for the same scope; `null` for the first revision. |
+| `merges` | array of digests, sorted, may be empty | yes | The other heads of the scope that this revision merges (section 4.3). Empty except for a `--merge` revision. |
+| `created` | timestamp, UTC | yes | When this revision was written. |
+| `rules_digest` | digest | yes | Digest of the canonical JSON (WORKFLOWS 10.1, 10.2) of the rule keys only: `retention_version`, `scope`, `keep_last`, `keep_days`, `hold_copies` and `pins`. Two revisions with equal rules have equal `rules_digest`. |
+
+The identity of a revision is the digest of the canonical JSON (WORKFLOWS 10.1, 10.2) of the whole document, including
+`previous`, `merges`, `created` and `rules_digest`. The file is named by it (section 4.1). A document never holds its
+own digest, so no field refers to itself.
 
 Pin object:
 
@@ -70,8 +75,9 @@ Example (digests shortened):
      "reason": "version used for the 2026 publication", "added": "2026-11-02T09:15:00Z"}
   ],
   "previous": "sha256:9a07...",
+  "merges": [],
   "created": "2026-11-21T10:00:00Z",
-  "digest": "sha256:c3e2..."
+  "rules_digest": "sha256:7d1b..."
 }
 ```
 
@@ -84,7 +90,8 @@ key it does not know (SCHEMAS 1 convention).
 
 Policy documents live next to the reference documents, in the record area:
 
-`<record>/retention/v1/<hex>.json`, where `<hex>` is the hexadecimal part of the policy's `digest`.
+`<record>/retention/v1/<hex>.json`, where `<hex>` is the hexadecimal part of the digest of the whole canonical document of
+the revision (section 3, identity).
 
 One file per revision. Area and dataset policies are stored in the same directory; the `scope` key tells them apart.
 
@@ -92,8 +99,8 @@ One file per revision. Area and dataset policies are stored in the same director
 
 Revisions are versioned the same way as snapshot documents (SNAPSHOTS 3.4, 6.2):
 
-- Each change writes a new document whose `previous` names the current head of that scope.
-- The head of a scope is the revision that no other revision of the scope names in `previous`.
+- Each change writes a new document whose `previous` names the current head of that scope. Its `merges` is empty.
+- The head of a scope is the revision that no other revision of the scope names in `previous` or `merges`.
 - A writer refuses to write a second head. Documents are never edited in place. They are written to a temporary file
   and renamed into place.
 - The policy history therefore shows when a pin was added or removed.
@@ -101,8 +108,9 @@ Revisions are versioned the same way as snapshot documents (SNAPSHOTS 3.4, 6.2):
 ### 4.3 Two heads
 
 After a merge of two clones of the record area, a scope may have two heads. This is an error for every command that
-reads the policy. It stays an error until `stradler retention set` writes a revision whose `previous` names one head
-and whose rules are the union of both heads (`--merge`). The tool never picks one head silently.
+reads the policy. It stays an error until `stradler retention set --merge` writes a revision whose `previous` names one
+head, whose `merges` names the other head, and whose rules are the union of both heads. The tool never picks one head
+silently.
 
 ## 5. Keys in use
 
@@ -123,7 +131,7 @@ The default for `hold_copies` is `1`. Held locations are counted by the freshnes
 | `stradler retention set <dataset>\|--area A [--keep-last N\|--no-keep-last] [--keep-days D\|--no-keep-days] [--hold-copies K] [--merge]` | Writes a new revision. | this release |
 | `stradler retention pin <dataset> sha256:<hex> --reason TEXT` | Writes a new revision with the pin added. | this release |
 | `stradler retention unpin <dataset> sha256:<hex>` | Writes a new revision with the pin removed. | this release |
-| `stradler retention pin <dataset> --from-run <run record>` | Writes a new revision that pins every input version of that run record (WORKFLOWS 9). Manual pins and this form are the only ways a pin is added; a run never adds pins automatically. | later release (step 7) |
+| `stradler retention pin <dataset> --from-run <run record>` | Writes a new revision that pins every input version of that run record (WORKFLOWS 9). Manual pins and this form are the only ways a pin is added; a run never adds pins automatically. | this release |
 | `stradler retention check [<dataset>...] [--area A] [--json]` | Evaluates every version of each lineage (section 7). | later release (evaluation) |
 
 Every write also writes a content record (CONTENT-ON-DEMAND 12) with `op` `retention_set` and the policy digest. The
