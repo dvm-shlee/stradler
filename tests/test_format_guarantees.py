@@ -41,7 +41,7 @@ def test_wheel_contains_bundled_schemas(tmp_path):
     if uv is None:
         pytest.skip("uv not available")
     out = tmp_path / "dist"
-    r = subprocess.run([uv, "build", "--wheel", "--out-dir", str(out), str(ROOT)], capture_output=True, text=True)
+    r = subprocess.run([uv, "build", "--wheel", "--out-dir", str(out), str(ROOT)], capture_output=True, text=True, check=False)
     assert r.returncode == 0, r.stderr
     (wheel,) = out.glob("stradler-*.whl")
     src = {p.name: p for p in (ROOT / "schemas").glob("*.json")}
