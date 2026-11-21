@@ -239,17 +239,6 @@ def test_working_missing_file_is_removed_in_present_area(proj):
     assert d["counts"]["removed"] == 1 and d["counts"]["absent"] == 0
 
 
-def test_working_absent_in_on_demand_area(proj):
-    (proj / ".stradler" / "structure.toml").write_text(
-        STRUCT.replace('mutability = "sealed"', 'mutability = "sealed"\ncontent = "on_demand"'))
-    _seal(proj)
-    _edit(proj, lambda ds: (ds / "a.txt").unlink())
-    d = _working(proj)
-    assert d["counts"]["absent"] == 1 and d["counts"]["removed"] == 0 and d["absent"][0]["size"] == 5
-    assert d["absent"][0]["digest"].startswith("sha256:")
-    assert main(["diff", "out/ds", "--to", "working", "--depth", "size", "--stat"]) == 0
-
-
 def test_working_explicit_from_and_selection(proj):
     s1 = _seal(proj)
     _edit(proj, lambda ds: (ds / "n.txt").write_text("n"))

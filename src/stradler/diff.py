@@ -257,11 +257,6 @@ def diff_dataset(
                       if _select(p, paths, include, exclude)]
         for u in unreadable:
             old.pop(u["path"], None)
-        on_demand = (areas.area_of(dataset) or ("", {}))[1].get("content") == "on_demand"
-        if on_demand:
-            for p in sorted(old.keys() - new.keys(), key=_key):
-                absent.append({"path": p, "size": old[p]["size"], "digest": old[p]["digest"]})
-                del old[p]
         pre_changed: list[dict] = []
         pre_same = 0
         if depth == "size":
