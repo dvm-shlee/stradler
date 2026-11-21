@@ -41,3 +41,13 @@ parentheses refer to the stradler design document.
 | true source | The store that holds the authoritative copy of a dataset's content; working copies fetch from it. |
 | add-on | A separately installed component that implements one stradler protocol (section 6). |
 | agent workspace | An area reserved for an AI agent harness: its instructions, memory and logs. |
+| version diff | The comparison of two sides of one dataset, each a snapshot or the working copy, that lists added, removed, changed and moved entries (`docs/DIFF.md`). Read only; writes no record. |
+| head | The current snapshot of a dataset: the one version that no other version names as its previous. A dataset with two heads is an error for a default comparison. |
+| working copy | The regular files of a dataset folder as they are now, listed with the rules of the snapshot stream (SNAPSHOTS 4.3). Not a snapshot; it has no digest until it is hashed. |
+| previous | The version a snapshot names as the version it succeeds. The first version of a dataset has no previous (`null`). |
+| first version | A snapshot whose previous is `null`. |
+| move | An entry that is removed at one path and added at another path with the same non-empty digest. A move is not a change. |
+| entry | One regular file of a snapshot or of the working copy, identified by its path relative to the dataset folder, with its size and digest. |
+| absent entry | An entry of a version whose file is not present in the working copy. Normal for an on-demand area (COD 3.1). |
+| unreadable entry | A file of the working copy that cannot be read, a symbolic link or another non-regular entry. |
+| hashing depth | How a working copy is compared with a snapshot: `sha256` (every present file is hashed) or `size` (sizes only). |
