@@ -170,8 +170,8 @@ def test_cli_text_json_and_exit_codes(proj, capsys):
     assert j["diff_version"] == 1 and j["counts"]["added"] == 3 and j["from"] is None
     assert main(["diff", "out/ds"]) == 1
     out = capsys.readouterr().out
-    assert out.splitlines()[0].startswith("diff out/ds empty (from) -> sha256:") and "A a.txt" in out
-    assert "3 added, 0 removed, 0 changed, 0 moved, 0 unchanged" in out.splitlines()[-1]
+    assert out.splitlines()[0].startswith("diff out/ds null -> sha256:") and "A a.txt" in out
+    assert "3 added, 0 removed, 0 changed, 0 moved, 0 unchanged; +14 B, -0 B" in out.splitlines()[-1]
     assert main(["diff", "out/ds", "--stat"]) == 1
     assert len(capsys.readouterr().out.splitlines()) == 2
     s1 = j["to"]["snapshot"]
@@ -179,3 +179,69 @@ def test_cli_text_json_and_exit_codes(proj, capsys):
     capsys.readouterr()
     assert main(["diff", "out/nope"]) == 3
     assert main(["diff"]) == 3
+
+
+def test_size_units():
+    from stradler.diff import _size
+    assert [_size(n) for n in (0, 1023, 1024, 1536, 1 << 20, 3 << 30)] == [
+        "0 B", "1023 B", "1.0 KiB", "1.5 KiB", "1.0 MiB", "3.0 GiB"]
+
+
+def _working(root, **kw):
+    return _diff(root, to_digest="working", **kw)
+
+
+def test_working_unchanged_then_edits(proj):
+    s1 = _seal(proj)
+    d = _working(proj)
+    assert d["from"]["snapshot"] == s1 and d["to"] == {"working": True, "depth": "sha256"}
+    assert d["relation"] is None and d["counts"]["unchanged"] == 3
+    assert main(["diff", "out/ds", "--to", "working"]) == 0
+    _edit(proj, lambda ds: ((ds / "a.txt").write_text("ALPHA"), (ds / "new.txt").write_text("n"),
+                            os.rename(ds / "sub" / "b.txt", ds / "moved.txt"), (ds / "sub" / "c.txt").unlink()))
+    d = _working(proj)
+    assert d["counts"] == {"added": 1, "removed": 1, "changed": 1, "moved": 1, "unchanged": 0, "absent": 0,
+                           "unreadable": 0}
+    assert d["changed"][0]["to"]["digest"].startswith("sha256:")
+    assert d["moved"][0]["to_path"] == "moved.txt" and d["removed"][0]["path"] == "sub/c.txt"
+
+
+def test_working_depth_size(proj):
+    _seal(proj)
+    _edit(proj, lambda ds: ((ds / "a.txt").write_text("ALPHA"), (ds / "sub" / "b.txt").write_text("bet"),
+                            (ds / "new.txt").write_text("n"), (ds / "sub" / "c.txt").unlink()))
+    d = _working(proj, depth="size")
+    assert d["to"]["depth"] == "size"
+    assert d["counts"]["unchanged"] == 1 and d["counts"]["changed"] == 1  # a.txt same size, b.txt differs
+    assert d["changed"][0]["path"] == "sub/b.txt" and d["changed"][0]["to"] == {"size": 3, "digest": None}
+    assert d["added"][0]["digest"] is None and d["counts"]["moved"] == 0
+    with pytest.raises(DiffError):
+        _working(proj, depth="md5")
+
+
+def test_working_unreadable_symlink_and_text(proj, capsys):
+    _seal(proj)
+    _edit(proj, lambda ds: ((ds / "sub" / "b.txt").unlink(), os.symlink("a.txt", ds / "sub" / "b.txt")))
+    d = _working(proj)
+    assert d["unreadable"] == [{"path": "sub/b.txt", "reason": "symbolic link"}]
+    assert d["counts"]["removed"] == 0 and d["counts"]["unchanged"] == 2
+    assert main(["diff", "out/ds", "--to", "working"]) == 1
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0].endswith("-> working (depth sha256)")
+    assert "! sub/b.txt symbolic link" in lines
+    assert lines[-1] == "0 added, 0 removed, 0 changed, 0 moved, 2 unchanged, 0 absent, 1 unreadable; +0 B, -0 B"
+
+
+def test_working_missing_file_is_removed_in_present_area(proj):
+    _seal(proj)
+    _edit(proj, lambda ds: (ds / "a.txt").unlink())
+    d = _working(proj)
+    assert d["counts"]["removed"] == 1 and d["counts"]["absent"] == 0
+
+
+def test_working_explicit_from_and_selection(proj):
+    s1 = _seal(proj)
+    _edit(proj, lambda ds: (ds / "n.txt").write_text("n"))
+    _seal(proj)
+    d = _working(proj, from_digest=s1, include=["*.txt"], paths=["sub"])
+    assert d["from"]["snapshot"] == s1 and d["counts"]["added"] == 0 and d["counts"]["unchanged"] == 2
