@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 def test_three_core_schemas_present_and_json():
     files = sorted((ROOT / "schemas").glob("*@1.0.0.json"))
-    assert [f.name for f in files] == ["config@1.0.0.json", "stradler@1.0.0.json", "structure@1.0.0.json"]
+    assert {"config@1.0.0.json", "stradler@1.0.0.json", "structure@1.0.0.json"} <= {f.name for f in files}
     for f in files:
         json.loads(f.read_text())
 

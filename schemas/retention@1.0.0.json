@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "retention@1.0.0",
+  "title": "stradler retention policy document",
+  "description": "One revision of the retention policy of a dataset or an area (retention_version 1). Stored at <record>/retention/v1/<hex>.json. Rules the schema cannot express (digest, pin order, reason length, pins only for dataset scopes, pins inside the lineage, one head per scope) are checked by stradler validate.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["retention_version", "scope", "keep_last", "keep_days", "pins", "previous", "created", "rules_digest", "digest"],
+  "properties": {
+    "retention_version": {"const": 1, "description": "Version of this format."},
+    "scope": {
+      "description": "A dataset (project-relative folder) or every dataset of one area.",
+      "anyOf": [
+        {"type": "object", "additionalProperties": false, "required": ["kind", "dataset"],
+         "properties": {"kind": {"const": "dataset"}, "dataset": {"type": "string", "minLength": 1}}},
+        {"type": "object", "additionalProperties": false, "required": ["kind", "area"],
+         "properties": {"kind": {"const": "area"}, "area": {"type": "string", "minLength": 1}}}
+      ]
+    },
+    "keep_last": {"type": ["integer", "null"], "minimum": 1, "description": "Keep the newest N versions; null: no count rule."},
+    "keep_days": {"type": ["integer", "null"], "minimum": 0, "description": "Keep a version until D days after it was superseded; null: no time rule."},
+    "hold_copies": {"type": "integer", "minimum": 1, "description": "Held locations each kept version must have; default 1."},
+    "pins": {
+      "type": "array",
+      "description": "Versions kept regardless of the other rules, sorted by snapshot. Dataset scopes only.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["snapshot", "snapshot_version", "reason", "added"],
+        "properties": {
+          "snapshot": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+          "snapshot_version": {"const": 2},
+          "reason": {"type": "string", "description": "Free text, at most 200 characters, no paths."},
+          "added": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"}
+        }
+      }
+    },
+    "previous": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$", "description": "Digest of the earlier revision of the same scope; null for the first. Digested, so returning to earlier rules gives a new digest."},
+    "merges": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "description": "Optional. Digest of the second head that a merge revision (retention set --merge) absorbs. Digested, so a merge never has the digest of an existing revision."},
+    "created": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$", "description": "When this revision was written (UTC). Not digested."},
+    "rules_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "description": "Digest of the canonical JSON of the rules alone: the document without digest, created, previous, merges and rules_digest."},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "description": "Digest of the canonical JSON of the document without digest and created. Names the file."}
+  }
+}

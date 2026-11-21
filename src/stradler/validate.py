@@ -214,6 +214,9 @@ def validate_project(project: Project) -> list[str]:
                 if p in paths:
                     out.append(f"{where}.path: same as areas.{paths[p]}")
                 paths[p] = name
+    if str_ok:
+        from .retention import retention_problems
+        out.extend(retention_problems(project.root, project.structure))
     if cfg_ok and project.local is not None:
         loc = project.local
         for sect, known in (("stores", stores), ("addons", addons)):
