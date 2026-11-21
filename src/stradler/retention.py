@@ -4,7 +4,8 @@ This module writes and reads the policy documents only. It evaluates nothing (no
 verdict per version) and guards no other command; those are later steps of the plan.
 
 A policy is one document per revision, ``<record area>/retention/v1/<hex>.json``, ``<hex>`` the digest of the
-document without ``digest``, ``previous`` and ``created`` (``merges`` is digested). The head of a scope is the
+whole document without ``digest`` and ``created`` (``previous`` and ``merges`` are digested, so a return to
+earlier rules is a new revision with its own file). ``rules_digest`` is the digest of the rules alone. The head of a scope is the
 revision that no other revision names in ``previous`` or ``merges``.
 """
 
@@ -40,7 +41,8 @@ __all__ = [
 RETENTION_DIR = os.path.join("retention", "v1")
 SNAPSHOT_V2 = os.path.join("snapshots", "v2")
 REASON_MAX = 200
-_UNDIGESTED = ("digest", "previous", "created")
+_UNDIGESTED = ("digest", "created")
+_NOT_RULES = ("digest", "created", "previous", "merges", "rules_digest")
 _UNSET: Any = object()
 _EMPTY = {"keep_last": None, "keep_days": None, "hold_copies": 1, "pins": []}
 
@@ -120,6 +122,10 @@ def _digest_of_doc(doc: Mapping[str, Any]) -> str:
     return digest_of({k: v for k, v in doc.items() if k not in _UNDIGESTED})
 
 
+def _rules_digest_of_doc(doc: Mapping[str, Any]) -> str:
+    return digest_of({k: v for k, v in doc.items() if k not in _NOT_RULES})
+
+
 def _ensure_digest(value: Any, what: str) -> str:
     if not (isinstance(value, str) and value.startswith("sha256:") and len(value) == 71
             and all(c in "0123456789abcdef" for c in value[7:])):
@@ -153,6 +159,8 @@ def check_document(doc: Any, filename: str | None = None) -> list[str]:
         out.append("digest does not match the document")
     if filename is not None and filename != _hex(doc["digest"]) + ".json":
         out.append(f"file name {filename!r} does not match the digest")
+    if doc["rules_digest"] != _rules_digest_of_doc(doc):
+        out.append("rules_digest does not match the rules")
     pins = doc["pins"]
     snaps = [p["snapshot"] for p in pins]
     if snaps != sorted(snaps):
@@ -414,6 +422,7 @@ def _build(scope: Mapping[str, Any], rules: Mapping[str, Any], previous: str | N
     }
     if merges is not None:
         doc["merges"] = merges
+    doc["rules_digest"] = _rules_digest_of_doc(doc)
     doc["digest"] = _digest_of_doc(doc)
     errs = check_document(doc)
     if errs:
@@ -422,14 +431,13 @@ def _build(scope: Mapping[str, Any], rules: Mapping[str, Any], previous: str | N
 
 
 def _commit(folder: str, doc: dict[str, Any], head_doc: Mapping[str, Any] | None) -> dict[str, Any]:
-    """Write ``doc`` unless it equals the head; refuse a digest that an earlier revision already holds."""
-    if head_doc is not None and head_doc["digest"] == doc["digest"]:
+    """Write ``doc`` unless its rules equal the head's; refuse a file that already exists."""
+    if head_doc is not None and head_doc["rules_digest"] == doc["rules_digest"] and "merges" not in doc:
         return {"document": dict(head_doc), "written": False}
     path = os.path.join(folder, _hex(doc["digest"]) + ".json")
     if os.path.exists(path):
         raise RetentionError(
-            f"the rules equal an earlier revision of this scope ({doc['digest']}); a revision is named by its "
-            "rules, so it cannot be written again as a newer one")
+            f"revision {doc['digest']} already exists")
     write_json_atomic(path, doc)
     return {"document": doc, "written": True}
 
@@ -604,8 +612,7 @@ def unpin_version(
     Raises
     ------
     RetentionError
-        When the digest is not pinned, for two heads, or when the resulting rules equal an earlier revision (a
-        revision is named by the digest of its rules, so it cannot be written twice).
+        When the digest is not pinned or for two heads.
     """
     areas = _areas(structure)
     root = os.fspath(root)

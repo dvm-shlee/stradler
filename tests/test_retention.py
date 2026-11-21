@@ -146,13 +146,17 @@ def test_pin_by_digest_and_unpin(proj):
     assert len(policy_files(proj)) == 3
 
 
-def test_unpin_back_to_earlier_rules_is_refused(proj):
+def test_pin_unpin_pin_gives_new_files(proj):
     v = versions(proj, 1)
-    set_policy(proj, STRUCT, dataset=DS, keep_last=2, created=T0)
-    pin_version(proj, STRUCT, DS, v[0], "x", created=T1)
-    with pytest.raises(RetentionError, match="equal an earlier revision"):
-        unpin_version(proj, STRUCT, DS, v[0], created=T2)
-    assert len(policy_files(proj)) == 2
+    r0 = set_policy(proj, STRUCT, dataset=DS, keep_last=2, created=T0)["document"]
+    a = pin_version(proj, STRUCT, DS, v[0], "x", created=T1)["document"]
+    b = unpin_version(proj, STRUCT, DS, v[0], created=T2)["document"]
+    c = pin_version(proj, STRUCT, DS, v[0], "x", created=T1)["document"]
+    assert b["rules_digest"] == r0["rules_digest"] and b["digest"] != r0["digest"]
+    assert c["rules_digest"] == a["rules_digest"] and c["digest"] != a["digest"]
+    assert c["previous"] == b["digest"]
+    assert len(policy_files(proj)) == 4
+    assert show(proj, STRUCT, dataset=DS)["head"]["digest"] == c["digest"]
 
 
 def test_pin_outside_lineage_refused(proj):
