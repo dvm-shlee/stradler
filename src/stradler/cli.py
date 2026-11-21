@@ -57,6 +57,19 @@ def build_parser() -> argparse.ArgumentParser:
     v2.add_argument("--store", help="check the copy at [stores.NAME] path of .stradler/local.toml")
     v2.add_argument("--subtree", help="check one directory of a tree-layout snapshot")
     v2.add_argument("--json", action="store_true", help="machine-readable output")
+    df = sub.add_parser(
+        "diff",
+        help="compare two snapshots of a dataset (reads documents only)",
+        description="Exit status: 0 no difference, 1 differences, 3 error.",
+    )
+    df.add_argument("dataset", help="dataset folder (project-relative or a path inside the project)")
+    df.add_argument("paths", nargs="*", help="limit to these paths or directories")
+    df.add_argument("--from", dest="from_digest", metavar="sha256:A", help="from snapshot (default: previous of --to)")
+    df.add_argument("--to", dest="to_digest", metavar="sha256:B", help="to snapshot (default: head)")
+    df.add_argument("--include", action="append", default=[], metavar="GLOB", help="keep paths matching GLOB")
+    df.add_argument("--exclude", action="append", default=[], metavar="GLOB", help="drop paths matching GLOB")
+    df.add_argument("--stat", action="store_true", help="header and summary only")
+    df.add_argument("--json", action="store_true", help="machine-readable output (diff_version 1)")
     d = sub.add_parser("describe", help="describe the project's areas, roles, stores and add-ons")
     d.add_argument("--json", action="store_true", help="versioned JSON document")
     d.add_argument("--agent", action="store_true", help="only what agents need: area, role, agent keys, grade")
@@ -87,11 +100,13 @@ def main(argv: list[str] | None = None) -> int:
     try:
         args = build_parser().parse_args(argv)
     except SystemExit as e:
-        if e.code == 2 and (sys.argv[1:] if argv is None else argv)[:1] == ["verify"]:
-            return 3  # verify reserves 2 for an unreachable store
+        if e.code == 2 and (sys.argv[1:] if argv is None else argv)[:1] in (["verify"], ["diff"]):
+            return 3  # verify and diff report every usage error as 3
         raise
     if args.cmd in ("seal", "verify"):
         return _seal_verify(args)
+    if args.cmd == "diff":
+        return _diff(args)
     if args.cmd == "workflow":
         from .workflow import scheduled
         if args.wcmd == "chain":
@@ -236,3 +251,26 @@ def _verify_replicas(args: argparse.Namespace) -> int:
         for m in out["problems"]:
             print(f"  problem: {m}")
     return code
+
+
+def _diff(args: argparse.Namespace) -> int:
+    from .diff import DiffError, diff_dataset, exit_code, render_text
+
+    def fail(msg: str) -> int:
+        print(json.dumps({"ok": False, "error": msg}) if args.json else f"error: {msg}", file=sys.stderr)
+        return 3
+
+    try:
+        abspath = os.path.realpath(args.dataset)
+        inside = os.path.isdir(abspath)
+        prj = load_project(abspath if inside else ".")
+        if prj.read_errors:
+            return fail("; ".join(prj.read_errors))
+        root = str(prj.root)
+        rel = os.path.relpath(abspath, root) if inside else args.dataset
+        out = diff_dataset(root, prj.structure, rel, from_digest=args.from_digest, to_digest=args.to_digest,
+                           paths=args.paths, include=args.include, exclude=args.exclude)
+    except (ProjectError, DiffError, OSError, ValueError) as e:
+        return fail(str(e))
+    print(json.dumps(out) if args.json else render_text(out, stat=args.stat))
+    return exit_code(out)
