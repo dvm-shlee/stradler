@@ -74,6 +74,37 @@ def build_parser() -> argparse.ArgumentParser:
     d.add_argument("--json", action="store_true", help="versioned JSON document")
     d.add_argument("--agent", action="store_true", help="only what agents need: area, role, agent keys, grade")
     d.add_argument("path", nargs="?", default=".", help="directory to start from (default: .)")
+    r = sub.add_parser("retention", help="retention policy records of a dataset or area (no evaluation, no guards)",
+                       description="Exit status: 0, 3 on an error (unknown dataset or area, two policy heads, "
+                       "pin outside the lineage, invalid document).")
+    rs = r.add_subparsers(dest="rcmd", required=True)
+
+    rsh = rs.add_parser("show", help="head policy, revision lineage and effective rules")
+    rsh.add_argument("dataset", nargs="?", help="dataset folder")
+    rsh.add_argument("--area", help="show the policy of an area instead")
+    rsh.add_argument("--json", action="store_true", help="machine-readable output")
+    rse = rs.add_parser("set", help="write a new revision of a policy")
+    rse.add_argument("dataset", nargs="?", help="dataset folder")
+    rse.add_argument("--area", help="policy of an area instead of a dataset")
+    g = rse.add_mutually_exclusive_group()
+    g.add_argument("--keep-last", type=int, metavar="N", help="keep the newest N versions (at least 1)")
+    g.add_argument("--no-keep-last", action="store_true", help="remove the count rule")
+    g = rse.add_mutually_exclusive_group()
+    g.add_argument("--keep-days", type=int, metavar="D", help="keep a version D days after it was superseded")
+    g.add_argument("--no-keep-days", action="store_true", help="remove the time rule")
+    rse.add_argument("--hold-copies", type=int, metavar="K", help="held locations each kept version needs")
+    rse.add_argument("--merge", action="store_true", help="resolve two heads by their union")
+    rse.add_argument("--json", action="store_true", help="machine-readable output")
+    rpi = rs.add_parser("pin", help="pin a version by snapshot digest, or every input of a run")
+    rpi.add_argument("dataset", nargs="?", help="dataset folder")
+    rpi.add_argument("snapshot", nargs="?", help="sha256:<hex> snapshot digest")
+    rpi.add_argument("--reason", help="why (at most 200 characters, no paths)")
+    rpi.add_argument("--from-run", metavar="RUN", help="run folder or run.json: pin its input versions")
+    rpi.add_argument("--json", action="store_true", help="machine-readable output")
+    run_ = rs.add_parser("unpin", help="remove a pin")
+    run_.add_argument("dataset", help="dataset folder")
+    run_.add_argument("snapshot", help="sha256:<hex> snapshot digest")
+    run_.add_argument("--json", action="store_true", help="machine-readable output")
     w = sub.add_parser("workflow", help="job-side entry points of a run on a scheduler add-on")
     ws = w.add_subparsers(dest="wcmd", required=True)
     c = ws.add_parser("chain", help="run one chain of a segment (job body; index from STRADLER_TASK_INDEX)")
@@ -107,6 +138,8 @@ def main(argv: list[str] | None = None) -> int:
         return _seal_verify(args)
     if args.cmd == "diff":
         return _diff(args)
+    if args.cmd == "retention":
+        return _retention(args)
     if args.cmd == "workflow":
         from .workflow import scheduled
         if args.wcmd == "chain":
@@ -166,6 +199,87 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(f"{root}: valid")
     return 1 if problems else 0
+
+
+def _retention(args: argparse.Namespace) -> int:
+    from .project import load_project
+    from .retention import (
+        RetentionError,
+        pin_from_run,
+        pin_version,
+        set_policy,
+        show,
+        unpin_version,
+    )
+
+    def fail(msg: str) -> int:
+        print(json.dumps({"ok": False, "error": msg}) if args.json else f"error: {msg}", file=sys.stderr)
+        return 3
+
+    try:
+        area = getattr(args, "area", None)
+        start = "." if args.dataset is None or area else os.path.realpath(args.dataset)
+        prj = load_project(start)
+        if prj.read_errors:
+            return fail("; ".join(prj.read_errors))
+        root = str(prj.root)
+        rel = os.path.relpath(os.path.realpath(args.dataset), root) if args.dataset is not None else None
+        if args.rcmd == "show":
+            out = show(root, prj.structure, dataset=rel, area=area)
+            if args.json:
+                print(json.dumps({"ok": True, **out}))
+            else:
+                sc = out["scope"]
+                print(f"{sc['kind']} {sc.get('dataset', sc.get('area'))}")
+                h = out["head"]
+                if h is None:
+                    print("  no policy")
+                else:
+                    print(f"  head {h['digest']}  keep_last {h['keep_last']}  keep_days {h['keep_days']}  "
+                          f"hold_copies {h.get('hold_copies', 1)}  pins {len(h['pins'])}")
+                for r in out["revisions"]:
+                    print(f"  revision {r['digest']}  {r['created']}")
+                if "effective" in out:
+                    e = out["effective"]
+                    print(f"  effective: keep_last {e['keep_last']}  keep_days {e['keep_days']}  "
+                          f"hold_copies {e['hold_copies']}  pins {len(e['pins'])}")
+            return 0
+        if args.rcmd == "set":
+            kw: dict = {}
+            if args.keep_last is not None:
+                kw["keep_last"] = args.keep_last
+            if args.no_keep_last:
+                kw["keep_last"] = None
+            if args.keep_days is not None:
+                kw["keep_days"] = args.keep_days
+            if args.no_keep_days:
+                kw["keep_days"] = None
+            if args.hold_copies is not None:
+                kw["hold_copies"] = args.hold_copies
+            res = set_policy(root, prj.structure, dataset=rel, area=area, merge=args.merge, **kw)
+        elif args.rcmd == "pin":
+            if args.from_run:
+                if args.dataset or args.snapshot:
+                    return fail("--from-run takes no dataset or snapshot")
+                res = pin_from_run(root, prj.structure, args.from_run, reason=args.reason)
+                if args.json:
+                    print(json.dumps({"ok": True, **res}))
+                else:
+                    for p in res["pins"]:
+                        print(f"{p['dataset']}: {'pinned' if p['written'] else 'already pinned'} {p['snapshot']}")
+                return 0
+            if rel is None or not args.snapshot:
+                return fail("pin needs a dataset and a snapshot digest, or --from-run")
+            res = pin_version(root, prj.structure, rel, args.snapshot, args.reason or "")
+        else:
+            res = unpin_version(root, prj.structure, rel, args.snapshot)
+    except (ProjectError, RetentionError, OSError, ValueError) as e:
+        return fail(str(e))
+    if args.json:
+        print(json.dumps({"ok": True, **res}))
+    else:
+        print(f"{'wrote' if res['written'] else 'unchanged'} {res['document']['digest']}")
+    return 0
 
 
 def _seal_verify(args: argparse.Namespace) -> int:
