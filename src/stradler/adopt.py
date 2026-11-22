@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from . import schema as sch
+from . import verified
 from .init import SPEC_VERSION, InitError, _materialize, load_template
 from .project import CONFIG_DIR, MARKER, find_root, load_project
 from .snapshot import SnapshotError, file_digest
@@ -193,6 +194,14 @@ def _copy_one(source: Path, tmp: Path, on_chunk: Any = None) -> None:
                 on_chunk(len(buf))
 
 
+def _note(root: Path, dest: Path, e: dict[str, Any]) -> None:
+    """Append the verified digest of ``dest`` to the local cache; the cache never fails an adopt."""
+    try:
+        verified.record(root, e["dest"], e["size"], os.lstat(dest).st_mtime_ns, e["digest"])
+    except OSError:
+        pass
+
+
 def _outside_areas(root: Path, plan: list[dict[str, Any]]) -> list[str]:
     """Return the dests of ``plan`` that lie under no declared area (same rule as ``validate``)."""
     index = AreaIndex(load_project(root).structure)
@@ -264,6 +273,7 @@ def adopt_plan(
     project: str | Path = ".",
     *,
     keep_times: bool = True,
+    record_verified: bool = True,
     bwlimit: int | None = None,
     progress: Any = None,
     progress_interval: float = 10.0,
@@ -280,6 +290,9 @@ def adopt_plan(
     ----------
     keep_times : bool
         Set the dest's atime and mtime to the source's after verify, before the rename (default on).
+    record_verified : bool
+        Append one line per verified file (copied or already matching) to the machine-local, git-ignored cache
+        ``.stradler/local/verified.jsonl`` (default on); ``snapshot`` and ``seal`` may reuse it.
     bwlimit : int, optional
         Limit the copy rate to this many bytes per second.
     progress : callable, optional
@@ -317,6 +330,8 @@ def adopt_plan(
                 raise AdoptError(f"dest exists with other content: {e['dest']}")
             skipped += 1
             skipped_bytes += e["size"]
+            if record_verified:
+                _note(root, dest, e)
             continue
         src = Path(e["source"])
         if not src.is_file():
@@ -370,6 +385,8 @@ def adopt_plan(
                 if keep_times:
                     os.utime(tmp, ns=(st.st_atime_ns, st.st_mtime_ns))
                 os.replace(tmp, dest)
+                if record_verified:
+                    _note(root, dest, e)
             except _Stop:
                 break
             finally:

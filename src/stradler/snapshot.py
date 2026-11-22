@@ -16,6 +16,7 @@ import time
 from collections.abc import Iterable, Iterator, Mapping
 from typing import Any
 
+from . import verified
 from .workflow.areas import AreaIndex
 from .workflow.execute import DEFAULT_RECORD_AREA, write_json_atomic
 from .workflow.identity import canonical_json, digest_of, sha256_digest
@@ -77,6 +78,11 @@ def file_digest(path: str | os.PathLike) -> tuple[str, int]:
     n = 0
     if not stat.S_ISREG(os.lstat(path).st_mode):
         raise SnapshotError(f"entry is not a regular file: {os.fspath(path)}")
+    active = verified.current()
+    if active is not None:
+        hit = active.lookup(path)
+        if hit is not None:
+            return hit
     with open(path, "rb") as fh:
         before = os.fstat(fh.fileno())
         while True:
@@ -420,6 +426,7 @@ def write_snapshot(
     grade: str | None = None,
     provenance: Mapping[str, Any] | None = None,
     created: str | None = None,
+    reuse: verified.Reuse | None = None,
 ) -> dict[str, Any]:
     """Write a version 2 snapshot of a dataset folder (sections 3 to 6).
 
@@ -444,6 +451,8 @@ def write_snapshot(
         Stored uninterpreted when given.
     created : str or None
         Timestamp ``YYYY-MM-DDTHH:MM:SSZ``; the current UTC time when ``None``.
+    reuse : stradler.verified.Reuse or None
+        Digest cache: a file whose size and mtime match a cache line is not read. ``None`` reads every file.
 
     Returns
     -------
@@ -456,6 +465,11 @@ def write_snapshot(
         For a missing or empty dataset, a refused entry (section 4.3), a changing file, a ``previous`` that is
         not the head of the dataset, or a dataset that already has two heads.
     """
+    with verified.reuse_scope(reuse):
+        return _write_snapshot(root, dataset, structure, layout, stream, previous, grade, provenance, created)
+
+
+def _write_snapshot(root, dataset, structure, layout, stream, previous, grade, provenance, created):  # type: ignore[no-untyped-def]
     if layout not in ("flat", "tree"):
         raise SnapshotError(f"unknown layout: {layout!r}")
     if stream and layout != "flat":

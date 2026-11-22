@@ -141,7 +141,7 @@ def _materialize(root: Path, doc: dict, digest: str, pid: str, *, make_areas: bo
         if write_template:
             (cd / "template.json").write_text(json.dumps(tpl, indent=2) + "\n", encoding="utf-8")
         (cd / "local.toml").write_text("# Machine-local settings (real paths, endpoints). Not tracked in git.\n", encoding="utf-8")
-        (cd / ".gitignore").write_text("local.toml\n", encoding="utf-8")
+        (cd / ".gitignore").write_text("local.toml\nlocal/\n", encoding="utf-8")
         for name in sch.CORE_SCHEMAS:
             src = sch.bundled_schema_dir() / f"{name}@{SPEC_VERSION}.json"
             shutil.copyfile(src, cd / "schema" / src.name)

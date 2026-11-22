@@ -123,3 +123,13 @@ are the `warnings` list of the output (`ok`, `root`, `problems`, `warnings`).
 `write_snapshot(..., provenance={origin, checked_at, metadata})` (SNAPSHOTS.md, section 3.5) copies the object into
 the version 2 snapshot document. `origin` is a string, `checked_at` a UTC timestamp, `metadata` a canonical JSON
 object. Stradler never interprets it and it is not part of any digest.
+
+## Verified digests (machine-local cache)
+
+After each verified copy, and for each file that already matched, copy mode appends one JSON line to
+`<project>/.stradler/local/verified.jsonl`: `{verified_version: 1, dest, size, mtime_ns, sha256, verified_at}`
+(`dest` is project-relative). The cache is machine-local and git-ignored (`.stradler/.gitignore` lists `local/`;
+adopt adds the line when it creates the cache). `--no-record-verified` turns it off. `stradler seal --reuse-verified`
+(and `write_snapshot(reuse=...)`) takes a file's digest from the latest line for its path when size and `mtime_ns`
+match, instead of reading the file; without the flag nothing changes. The count of reused digests and of ignored
+malformed lines is reported. The final verify of a seal always reads every file.

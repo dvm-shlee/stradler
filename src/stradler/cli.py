@@ -32,6 +32,8 @@ def build_parser() -> argparse.ArgumentParser:
     ad.add_argument("--dry-run", action="store_true", help="print the proposal and change nothing")
     ad.add_argument("--plan", help="copy mode: JSON list of {source, dest, size, digest}; path is the project")
     ad.add_argument("--no-keep-times", action="store_true", help="copy mode: do not set the dest times to the source's")
+    ad.add_argument("--no-record-verified", action="store_true",
+                    help="copy mode: do not append verified digests to .stradler/local/verified.jsonl")
     ad.add_argument("--bwlimit", help="copy mode: rate limit in bytes/s, with optional K, M or G suffix")
     ad.add_argument("--progress-interval", type=float, default=10.0, help="copy mode: seconds between progress lines (default: 10)")
     ad.add_argument("--json", action="store_true", help="machine-readable output")
@@ -45,6 +47,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--stream", action="store_true", help="store the entries as a stream (layout flat)")
     s.add_argument("--grade", help="grade to store in the document (not interpreted)")
     s.add_argument("--provenance-file", help="JSON file with the provenance object to store")
+    s.add_argument("--reuse-verified", action="store_true",
+                   help="reuse digests adopt verified (size and mtime must match; default: read every file)")
     s.add_argument("--rollback", action="store_true", help="undo an interrupted seal of the dataset")
     s.add_argument("--json", action="store_true", help="machine-readable output")
     v2 = sub.add_parser(
@@ -192,6 +196,7 @@ def main(argv: list[str] | None = None) -> int:
                 prog = (lambda d: print(json.dumps(d), file=sys.stderr, flush=True)) if args.json else None
                 summary = adopt.adopt_plan(
                     args.plan, args.path, keep_times=not args.no_keep_times,
+                    record_verified=not args.no_record_verified,
                     bwlimit=adopt.parse_rate(args.bwlimit) if args.bwlimit else None,
                     progress=prog, progress_interval=args.progress_interval)
                 intr = summary["interrupted"]
@@ -344,7 +349,7 @@ def _seal_verify(args: argparse.Namespace) -> int:
                 with open(args.provenance_file, encoding="utf-8") as fh:
                     prov = json.load(fh)
             out = seal_dataset(root, prj.structure, rel, local=prj.local, layout=args.layout, stream=args.stream,
-                               grade=args.grade, provenance=prov)
+                               grade=args.grade, provenance=prov, reuse_verified=args.reuse_verified)
         else:
             out = verify_dataset(root, prj.structure, rel, store=args.store, local=prj.local, subtree=args.subtree)
     except (ProjectError, SealError, VerifyError, OSError, ValueError) as e:
@@ -357,6 +362,8 @@ def _seal_verify(args: argparse.Namespace) -> int:
         line = f"{out['dataset']}: {out['result']}"
         if c:
             line += " (" + ", ".join(f"{k} {v}" for k, v in c.items()) + ")"
+        if "reused_digests" in out:
+            line += f" [reused {out['reused_digests']} cached digest(s), {out['cache_warnings']} cache warning(s)]"
         print(("sealed; " if args.cmd == "seal" else "") + line)
         for cat, paths in out.get("lists", {}).items():
             for pth in paths:

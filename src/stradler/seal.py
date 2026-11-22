@@ -6,6 +6,7 @@ The seal journal is written before any permission changes, so that a killed seal
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -13,6 +14,7 @@ import stat
 from collections.abc import Mapping
 from typing import Any
 
+from . import verified
 from .snapshot import (
     SnapshotError,
     _hex,
@@ -82,6 +84,7 @@ def seal_dataset(
     stream: bool = False,
     grade: str | None = None,
     provenance: Mapping[str, Any] | None = None,
+    reuse_verified: bool = False,
 ) -> dict[str, Any]:
     """Seal a dataset of an area of mutability ``sealed`` and verify it.
 
@@ -93,7 +96,10 @@ def seal_dataset(
     Returns
     -------
     dict
-        The verify result (:func:`stradler.verify.verify_dataset`) with ``sealed`` and ``resumed`` added.
+        The verify result (:func:`stradler.verify.verify_dataset`) with ``sealed`` and ``resumed`` added, and,
+        with ``reuse_verified``, ``reused_digests`` and ``cache_warnings``. With ``reuse_verified`` a file whose
+        size and mtime match a line of the machine-local cache written by ``adopt`` is not read again for the
+        digests of the seal (the final verify always reads every file).
 
     Raises
     ------
@@ -111,6 +117,9 @@ def seal_dataset(
     full = os.path.join(root, dataset)
     jpath = journal_path(root, areas, dataset)
     resumed = os.path.exists(jpath)
+    reuse = verified.Reuse(root) if reuse_verified else None
+    scope = contextlib.ExitStack()
+    scope.enter_context(verified.reuse_scope(reuse))
     try:
         if resumed:
             with open(jpath, encoding="utf-8") as fh:
@@ -158,12 +167,17 @@ def seal_dataset(
         _checkpoint("cleanup")
     except SnapshotError as exc:
         raise SealError(str(exc)) from None
+    finally:
+        scope.close()
     try:
         res = verify_dataset(root, structure, dataset, local=local)
     except VerifyError as exc:
         raise SealError(f"sealed, but verify failed: {exc}") from None
     res["sealed"] = True
     res["resumed"] = resumed
+    if reuse is not None:
+        res["reused_digests"] = reuse.count
+        res["cache_warnings"] = reuse.warnings
     return res
 
 
