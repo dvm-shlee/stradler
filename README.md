@@ -12,9 +12,10 @@ Alpha (`0.1.0a1`). No PyPI or crates.io release has been published yet; the `str
 - `stradler init --template <file>`: create `stradler.json` and `.stradler/` from a project template.
 - `stradler validate [path]`: validate the project at or above a directory (`--json` for machine output). It checks
   the `structure@1.1.0` roles and grades and the `config@1.1.0` replica declarations
-  ([docs/SCHEMAS.md](docs/SCHEMAS.md)).
+  ([docs/SCHEMAS.md](docs/SCHEMAS.md)). A file under no declared area is a warning (`validate` stays ok).
 - `stradler adopt [path]`: take an existing directory in as a project (`--template`, `--project-id`, `--dry-run`,
-  `--json`); copy mode with `--plan <file>` copies files in from a plan. See [docs/ADOPT.md](docs/ADOPT.md).
+  `--json`); copy mode with `--plan <file>` copies files in from a plan (`--dry-run` reports every problem without copying;
+`--no-keep-times`, `--bwlimit`, `--progress-interval`). See [docs/ADOPT.md](docs/ADOPT.md).
 - `stradler describe [path]`: human text, `--json` (versioned document, `describe_version` 2) and `--agent` views of
   `.stradler/`. See [docs/DESCRIBE.md](docs/DESCRIBE.md).
 - `stradler seal <dataset>`: make a dataset of a sealed area read-only and write its version 2 snapshot document
