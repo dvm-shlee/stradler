@@ -403,12 +403,13 @@ def test_dry_run_lists_every_problem_class(tmp_path, proj, capsys):
     (tmp_path / "src" / "c").unlink()                           # source_missing
     (tmp_path / "src" / "d").write_bytes(b"much longer data")  # source_changed
     plan[4]["dest"] = "elsewhere/e"                             # dest_outside_areas
-    plan.append(dict(plan[5], dest="code/g"))                   # to_copy (f copied under a second dest)
+    plan.append(dict(plan[5], dest="code/g"))                   # to_copy (f and g)
     f.write_text(json.dumps(plan))
     code, rep = _dry(f, proj, capsys)
     assert code == 1 and rep["ok"] is False
-    for k in ("dest_conflict", "source_missing", "source_changed", "dest_outside_areas", "to_copy"):
+    for k in ("dest_conflict", "source_missing", "source_changed", "dest_outside_areas"):
         assert rep[k]["files"] == 1, k
+    assert rep["to_copy"]["files"] == 2  # f and its second dest g
     assert rep["already_match"]["files"] == 1  # a
     assert rep["source_changed"]["bytes"] == plan[3]["size"]
     assert not (proj / "elsewhere").exists() and not (proj / "code" / "g").exists()
