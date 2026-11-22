@@ -396,7 +396,7 @@ def test_dry_run_clean_copies_nothing(tmp_path, proj, capsys):
 
 def test_dry_run_lists_every_problem_class(tmp_path, proj, capsys):
     f, plan = plan_for(tmp_path, {n: b"data-" + n.encode() for n in "abcdef"})
-    adopt_plan(f, proj)  # a is a match after this run; reset the rest
+    adopt_plan(f, proj)  # a stays a match; reset the rest
     for n in "bcdef":
         (proj / "code" / n).unlink()
     (proj / "code" / "b").write_bytes(b"other")                 # dest_conflict
@@ -409,7 +409,7 @@ def test_dry_run_lists_every_problem_class(tmp_path, proj, capsys):
     assert code == 1 and rep["ok"] is False
     for k in ("dest_conflict", "source_missing", "source_changed", "dest_outside_areas", "to_copy"):
         assert rep[k]["files"] == 1, k
-    assert rep["already_match"]["files"] == 0
+    assert rep["already_match"]["files"] == 1  # a
     assert rep["source_changed"]["bytes"] == plan[3]["size"]
     assert not (proj / "elsewhere").exists() and not (proj / "code" / "g").exists()
 
