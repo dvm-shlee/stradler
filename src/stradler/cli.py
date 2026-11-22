@@ -31,6 +31,9 @@ def build_parser() -> argparse.ArgumentParser:
     ad.add_argument("--project-id", help="project identifier (default: directory name)")
     ad.add_argument("--dry-run", action="store_true", help="print the proposal and change nothing")
     ad.add_argument("--plan", help="copy mode: JSON list of {source, dest, size, digest}; path is the project")
+    ad.add_argument("--no-keep-times", action="store_true", help="copy mode: do not set the dest times to the source's")
+    ad.add_argument("--bwlimit", help="copy mode: rate limit in bytes/s, with optional K, M or G suffix")
+    ad.add_argument("--progress-interval", type=float, default=10.0, help="copy mode: seconds between progress lines (default: 10)")
     ad.add_argument("--json", action="store_true", help="machine-readable output")
     ad.add_argument("path", nargs="?", default=".", help="directory to adopt, or the project in copy mode (default: .)")
     v = sub.add_parser("validate", help="validate the project at or above a directory")
@@ -175,9 +178,17 @@ def main(argv: list[str] | None = None) -> int:
         if args.cmd == "adopt":
             from . import adopt
             if args.plan:
-                summary = adopt.adopt_plan(args.plan, args.path)
-                print(json.dumps({"ok": True, **summary}) if args.json else
-                      f"copied {summary['copied']}, skipped {summary['skipped']} ({summary['bytes_copied']} bytes)")
+                prog = (lambda d: print(json.dumps(d), file=sys.stderr, flush=True)) if args.json else None
+                summary = adopt.adopt_plan(
+                    args.plan, args.path, keep_times=not args.no_keep_times,
+                    bwlimit=adopt.parse_rate(args.bwlimit) if args.bwlimit else None,
+                    progress=prog, progress_interval=args.progress_interval)
+                intr = summary["interrupted"]
+                print(json.dumps({"ok": not intr, **summary}) if args.json else
+                      f"{'interrupted: ' if intr else ''}copied {summary['copied']}, skipped {summary['skipped']} "
+                      f"({summary['bytes_copied']} bytes)")
+                if intr:
+                    return 130 if summary["signal"] == "SIGINT" else 143
             elif args.dry_run:
                 prop = adopt.propose(args.path, args.template, args.project_id)
                 print(json.dumps({"ok": True, "dry_run": True, **prop}, indent=None if args.json else 2))

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import signal
 import tomllib
 from pathlib import Path
 
@@ -173,12 +175,12 @@ def test_copy_resumes_after_interruption(tmp_path, proj, monkeypatch):
     real = adopt._copy_one
     calls = []
 
-    def flaky(source, tmp):
+    def flaky(source, tmp, *a):
         calls.append(source)
         if len(calls) == 2:
             tmp.write_bytes(b"par")  # partial temporary file, as a killed copy leaves
             raise KeyboardInterrupt
-        real(source, tmp)
+        real(source, tmp, *a)
 
     monkeypatch.setattr(adopt, "_copy_one", flaky)
     with pytest.raises(KeyboardInterrupt):
@@ -248,3 +250,125 @@ def test_provenance_shape_refused(tmp_path, prov):
         write_snapshot(tmp_path, "ds", provenance=prov)
     assert not (tmp_path / "records").exists() or not list((tmp_path / "records").rglob("*.json"))
     assert snapshot.check_provenance({"origin": "x", "extra": 1}) is None
+
+
+# ---- copy engine: times, rate limit, progress, clean stop ----
+
+
+def test_copy_keeps_mtime_and_atime(tmp_path, proj):
+    f, plan = plan_for(tmp_path, {"a": b"alpha"})
+    os.utime(plan[0]["source"], ns=(1_000_000_000_000_000_000, 1_704_153_600_000_000_000))
+    adopt_plan(f, proj)
+    st = (proj / "raw" / "a").stat()
+    assert st.st_mtime_ns == 1_704_153_600_000_000_000
+    assert st.st_atime_ns == 1_000_000_000_000_000_000
+
+
+def test_no_keep_times_uses_copy_time(tmp_path, proj):
+    f, plan = plan_for(tmp_path, {"a": b"alpha"})
+    os.utime(plan[0]["source"], ns=(1_000_000_000_000_000_000, 1_704_153_600_000_000_000))
+    adopt_plan(f, proj, keep_times=False)
+    assert (proj / "raw" / "a").stat().st_mtime_ns != 1_704_153_600_000_000_000
+
+
+def test_times_set_before_rename(tmp_path, proj, monkeypatch):
+    f, plan = plan_for(tmp_path, {"a": b"alpha"})
+    os.utime(plan[0]["source"], ns=(10**18, 1_704_153_600_000_000_000))
+    seen = []
+    real = os.replace
+
+    def spy(a, b):
+        seen.append(Path(a).stat().st_mtime_ns)
+        real(a, b)
+
+    monkeypatch.setattr(adopt.os, "replace", spy)
+    adopt_plan(f, proj)
+    assert seen == [1_704_153_600_000_000_000]
+
+
+@pytest.mark.parametrize("text,n", [("100", 100), ("1K", 1024), ("2m", 2 << 20), ("1.5G", 3 << 29)])
+def test_parse_rate(text, n):
+    assert adopt.parse_rate(text) == n
+
+
+@pytest.mark.parametrize("text", ["", "0", "-5", "abc", "10T", "1KB"])
+def test_parse_rate_refused(text):
+    with pytest.raises(AdoptError):
+        adopt.parse_rate(text)
+
+
+def test_bwlimit_paces_with_fake_clock(tmp_path, proj, monkeypatch):
+    f, _ = plan_for(tmp_path, {"a": b"x" * 100})
+    now = [0.0]
+    sleeps = []
+    monkeypatch.setattr(adopt, "_CHUNK", 10)
+    monkeypatch.setattr(adopt, "_clock", lambda: now[0])
+    monkeypatch.setattr(adopt, "_sleep", lambda s: (sleeps.append(s), now.__setitem__(0, now[0] + s)))
+    adopt_plan(f, proj, bwlimit=50)
+    assert now[0] == pytest.approx(2.0)
+    assert sum(sleeps) == pytest.approx(2.0)
+
+
+def test_progress_lines_and_final(tmp_path, proj, monkeypatch):
+    f, _ = plan_for(tmp_path, {"a": b"x" * 40, "b": b"y" * 20})
+    now = [0.0]
+    monkeypatch.setattr(adopt, "_CHUNK", 10)
+    monkeypatch.setattr(adopt, "_clock", lambda: (now.__setitem__(0, now[0] + 1.0), now[0])[1])
+    got = []
+    adopt_plan(f, proj, progress=got.append, progress_interval=3)
+    assert len(got) >= 3
+    assert got[-1] == {"files_done": 2, "files_total": 2, "bytes_done": 60, "bytes_total": 60}
+    assert all(set(g) == {"files_done", "files_total", "bytes_done", "bytes_total"} for g in got)
+    assert [g["bytes_done"] for g in got] == sorted(g["bytes_done"] for g in got)
+
+
+def test_cli_progress_on_stderr_only_with_json(tmp_path, proj, capsys):
+    f, _ = plan_for(tmp_path, {"a": b"alpha"})
+    assert main(["adopt", "--plan", str(f), "--json", str(proj)]) == 0
+    cap = capsys.readouterr()
+    last = json.loads(cap.err.strip().splitlines()[-1])
+    assert last["files_done"] == 1 and last["bytes_total"] == 5
+    assert json.loads(cap.out)["interrupted"] is False
+    f2, _ = plan_for(tmp_path, {"b": b"beta"}, prefix="raw2")
+    assert main(["adopt", "--plan", str(f2), str(proj)]) == 0
+    assert capsys.readouterr().err == ""
+
+
+@pytest.mark.parametrize("sig,code", [(signal.SIGINT, 130), (signal.SIGTERM, 143)])
+def test_clean_stop_on_signal_then_resume(tmp_path, proj, monkeypatch, capsys, sig, code):
+    files = {"a": b"alpha", "b": b"beta", "c": b"gamma"}
+    f, plan = plan_for(tmp_path, files)
+    real = adopt._copy_one
+    calls = []
+
+    def killer(source, tmp, *a):
+        calls.append(source)
+        if len(calls) == 2:
+            os.kill(os.getpid(), sig)
+        real(source, tmp, *a)
+
+    monkeypatch.setattr(adopt, "_copy_one", killer)
+    assert main(["adopt", "--plan", str(f), "--json", str(proj)]) == code
+    out = json.loads(capsys.readouterr().out)
+    assert out["interrupted"] is True and out["ok"] is False and out["copied"] == 1
+    assert not list(proj.rglob("*.stradler-part"))
+    assert (proj / "raw" / "a").is_file() and not (proj / "raw" / "b").exists()
+    summaries = list((proj / ".stradler" / "adopt").glob("summary-*.json"))
+    assert json.loads(summaries[0].read_text())["interrupted"] is True
+    monkeypatch.setattr(adopt, "_copy_one", real)
+    s = adopt_plan(f, proj)
+    assert (s["copied"], s["skipped"], s["interrupted"]) == (2, 1, False)
+
+
+def test_signal_handlers_restored(tmp_path, proj):
+    before = signal.getsignal(signal.SIGINT), signal.getsignal(signal.SIGTERM)
+    f, _ = plan_for(tmp_path, {"a": b"alpha"})
+    adopt_plan(f, proj)
+    assert (signal.getsignal(signal.SIGINT), signal.getsignal(signal.SIGTERM)) == before
+
+
+def test_summary_stays_path_free(tmp_path, proj):
+    f, _ = plan_for(tmp_path, {"a": b"alpha"})
+    s = adopt_plan(f, proj)
+    text = json.dumps(s)
+    assert str(tmp_path) not in text and "raw/" not in text

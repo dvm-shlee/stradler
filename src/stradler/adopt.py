@@ -10,7 +10,8 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
+import signal
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -20,11 +21,15 @@ from .init import SPEC_VERSION, InitError, _materialize, load_template
 from .project import CONFIG_DIR, MARKER, find_root
 from .snapshot import SnapshotError, file_digest
 
-__all__ = ["AdoptError", "adopt_in_place", "adopt_plan", "load_plan", "propose"]
+__all__ = ["AdoptError", "adopt_in_place", "adopt_plan", "load_plan", "parse_rate", "propose"]
 
 _NAME = re.compile(r"[^A-Za-z0-9_-]")
 _DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 TMP_SUFFIX = ".stradler-part"
+_CHUNK = 1 << 20
+_clock = time.monotonic
+_sleep = time.sleep
+_RATE = re.compile(r"^(\d+(?:\.\d+)?)([KMGkmg]?)$")
 
 
 class AdoptError(InitError):
@@ -161,29 +166,73 @@ def _verify(path: Path, size: int, digest: str) -> bool:
     return n == size and d == digest
 
 
-def _copy_one(source: Path, tmp: Path) -> None:
-    shutil.copyfile(source, tmp)
+class _Stop(Exception):
+    """Internal: a stop signal arrived while a file was being copied."""
 
 
-def adopt_plan(plan_file: str | Path, project: str | Path = ".") -> dict[str, Any]:
+def parse_rate(text: str) -> int:
+    """Parse a rate in bytes per second with an optional K, M or G suffix (powers of 1024)."""
+    m = _RATE.match(str(text).strip())
+    if not m or float(m.group(1)) <= 0:
+        raise AdoptError(f"invalid rate: {text!r} (use a positive number with optional K, M or G)")
+    mult = {"": 1, "k": 1 << 10, "m": 1 << 20, "g": 1 << 30}[m.group(2).lower()]
+    return max(1, int(float(m.group(1)) * mult))
+
+
+def _copy_one(source: Path, tmp: Path, on_chunk: Any = None) -> None:
+    """Copy ``source`` to ``tmp`` in chunks, calling ``on_chunk(n_bytes)`` after each chunk."""
+    with open(source, "rb") as src, open(tmp, "wb") as dst:
+        while True:
+            buf = src.read(_CHUNK)
+            if not buf:
+                break
+            dst.write(buf)
+            if on_chunk is not None:
+                on_chunk(len(buf))
+
+
+def adopt_plan(
+    plan_file: str | Path,
+    project: str | Path = ".",
+    *,
+    keep_times: bool = True,
+    bwlimit: int | None = None,
+    progress: Any = None,
+    progress_interval: float = 10.0,
+) -> dict[str, Any]:
     """Carry out a copy plan inside a project (copy mode).
 
     Every dest is checked first: one that exists with other content than the plan states refuses the whole
     plan before anything is copied. A dest that already matches is skipped, so a rerun after an interruption
-    finishes the rest. Each file is copied to a temporary name, verified for size and sha256 and then renamed;
-    a mismatch removes the temporary file and stops with an error. Sources are only read.
+    finishes the rest. Each file is copied to a temporary name, verified for size and sha256, given the
+    source's access and modification times (``keep_times``) and then renamed; a mismatch removes the
+    temporary file and stops with an error. Sources are only read.
+
+    Parameters
+    ----------
+    keep_times : bool
+        Set the dest's atime and mtime to the source's after verify, before the rename (default on).
+    bwlimit : int, optional
+        Limit the copy rate to this many bytes per second.
+    progress : callable, optional
+        Called with ``{files_done, files_total, bytes_done, bytes_total}`` every ``progress_interval``
+        seconds and once at the end.
+
+    A SIGINT or SIGTERM during the run removes the current temporary file, stops, and returns the summary
+    with ``interrupted`` true and ``signal`` set to the signal name; a rerun resumes.
 
     Returns
     -------
     dict
-        The summary record ``{files, copied, skipped, bytes_total, bytes_copied, started, finished}``; it is
-        also written to ``.stradler/adopt/summary-<time>.json``. It holds counts, bytes and times, no paths.
+        The summary record ``{files, copied, skipped, bytes_total, bytes_copied, interrupted, started,
+        finished}``; it is also written to ``.stradler/adopt/summary-<time>.json``. It holds counts, bytes
+        and times, no paths.
     """
     root = find_root(project)
     plan = load_plan(plan_file)
     started = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     todo: list[tuple[Path, Path, dict[str, Any]]] = []
-    skipped = 0
+    skipped = skipped_bytes = 0
     real_root = root.resolve()
     for e in plan:
         dest = root / e["dest"]
@@ -196,34 +245,86 @@ def adopt_plan(plan_file: str | Path, project: str | Path = ".") -> dict[str, An
             if not dest.is_file() or not _verify(dest, e["size"], e["digest"]):
                 raise AdoptError(f"dest exists with other content: {e['dest']}")
             skipped += 1
+            skipped_bytes += e["size"]
             continue
         src = Path(e["source"])
         if not src.is_file():
             raise AdoptError(f"source is not a file: {e['source']}")
         todo.append((src, dest, e))
+    bytes_total = sum(e["size"] for e in plan)
     copied = copied_bytes = 0
-    for src, dest, e in todo:
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        tmp = dest.with_name(dest.name + TMP_SUFFIX)
-        try:
-            _copy_one(src, tmp)
-            if not _verify(tmp, e["size"], e["digest"]):
-                raise AdoptError(f"size or digest mismatch after copy: {e['dest']}")
-            os.replace(tmp, dest)
-        finally:
-            if tmp.exists():
-                tmp.unlink()
-        copied += 1
-        copied_bytes += e["size"]
+    stop_sig: list[int] = []
+    cur = {"partial": 0}
+    last = [_clock()]
+
+    def report(force: bool = False) -> None:
+        if progress is None:
+            return
+        now = _clock()
+        if force or now - last[0] >= progress_interval:
+            last[0] = now
+            progress({"files_done": skipped + copied, "files_total": len(plan),
+                      "bytes_done": skipped_bytes + copied_bytes + cur["partial"], "bytes_total": bytes_total})
+
+    pace = {"t0": 0.0, "n": 0}
+
+    def on_chunk(n: int) -> None:
+        if stop_sig:
+            raise _Stop
+        cur["partial"] += n
+        if bwlimit:
+            pace["n"] += n
+            wait = pace["t0"] + pace["n"] / bwlimit - _clock()
+            if wait > 0:
+                _sleep(wait)
+        report()
+
+    old: dict[int, Any] = {}
+    if threading.current_thread() is threading.main_thread():
+        for sg in (signal.SIGINT, signal.SIGTERM):
+            old[sg] = signal.signal(sg, lambda signum, _f: stop_sig.append(signum))
+    try:
+        for src, dest, e in todo:
+            if stop_sig:
+                break
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            tmp = dest.with_name(dest.name + TMP_SUFFIX)
+            cur["partial"] = 0
+            pace["t0"], pace["n"] = _clock(), 0
+            st = src.stat()
+            try:
+                _copy_one(src, tmp, on_chunk)
+                if not _verify(tmp, e["size"], e["digest"]):
+                    raise AdoptError(f"size or digest mismatch after copy: {e['dest']}")
+                if keep_times:
+                    os.utime(tmp, ns=(st.st_atime_ns, st.st_mtime_ns))
+                os.replace(tmp, dest)
+            except _Stop:
+                break
+            finally:
+                if tmp.exists():
+                    tmp.unlink()
+            cur["partial"] = 0
+            copied += 1
+            copied_bytes += e["size"]
+            report()
+    finally:
+        for sg, h in old.items():
+            signal.signal(sg, h)
+    cur["partial"] = 0
+    report(force=True)
     summary = {
         "files": len(plan),
         "copied": copied,
         "skipped": skipped,
-        "bytes_total": sum(e["size"] for e in plan),
+        "bytes_total": bytes_total,
         "bytes_copied": copied_bytes,
+        "interrupted": bool(stop_sig),
         "started": started,
         "finished": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
+    if stop_sig:
+        summary["signal"] = signal.Signals(stop_sig[0]).name
     out = root / CONFIG_DIR / "adopt"
     out.mkdir(parents=True, exist_ok=True)
     name = f"summary-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}-{os.getpid()}.json"
