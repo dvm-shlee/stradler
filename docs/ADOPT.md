@@ -5,7 +5,7 @@
 ## Synopsis and exit codes
 
 - In place: `stradler adopt <dir> [--template T] [--project-id ID] [--dry-run] [--json]`
-- Copy mode: `stradler adopt --plan <file> [<project>] [--dry-run] [--json] [--no-keep-times] [--bwlimit RATE] [--progress-interval S]`
+- Copy mode: `stradler adopt --plan <file> [<project>] [--dry-run] [--json] [--no-keep-times] [--no-record-verified] [--bwlimit RATE] [--progress-interval S]`
 
 `--plan` selects copy mode; with `--dry-run` it is the copy-mode dry run. `--template` and `--project-id` apply to in
 place mode only. `<project>` (default `.`) is the project in copy mode and the directory to adopt in place mode.
@@ -112,12 +112,6 @@ entries and the project marker are skipped). Warnings are computed only when the
 are printed on stderr as `warning: <top>: N file(s) under no declared area` after the `valid` line; with `--json` they
 are the `warnings` list of the output (`ok`, `root`, `problems`, `warnings`).
 
-## Not yet
-
-- Reuse of verified digests (an optional, machine-local, git-ignored record `{dest, size, mtime, sha256, verified_at}`
-  that `snapshot` and `seal` could use to skip re-hashing when size and mtime match) is not implemented. It waits for
-  the content-on-demand design (`docs/plans/CONTENT-ON-DEMAND.md`).
-
 ## Provenance
 
 `write_snapshot(..., provenance={origin, checked_at, metadata})` (SNAPSHOTS.md, section 3.5) copies the object into
@@ -126,10 +120,45 @@ object. Stradler never interprets it and it is not part of any digest.
 
 ## Verified digests (machine-local cache)
 
-After each verified copy, and for each file that already matched, copy mode appends one JSON line to
-`<project>/.stradler/local/verified.jsonl`: `{verified_version: 1, dest, size, mtime_ns, sha256, verified_at}`
-(`dest` is project-relative). The cache is machine-local and git-ignored (`.stradler/.gitignore` lists `local/`;
-adopt adds the line when it creates the cache). `--no-record-verified` turns it off. `stradler seal --reuse-verified`
-(and `write_snapshot(reuse=...)`) takes a file's digest from the latest line for its path when size and `mtime_ns`
-match, instead of reading the file; without the flag nothing changes. The count of reused digests and of ignored
-malformed lines is reported. The final verify of a seal always reads every file.
+After each verified copy, and for each file that already matched (the pre-check read its size and sha256 to find it
+matching), copy mode appends one JSON line to `<project>/.stradler/local/verified.jsonl`. The line is written after
+the dest's times are set and the temporary file is renamed to the dest.
+
+| Member | Type | Meaning |
+|---|---|---|
+| `verified_version` | integer, `1` | Version of the line format. Other values are malformed. |
+| `dest` | string | Project-relative POSIX path of the file (the plan's `dest`). |
+| `size` | integer | Size of the dest in bytes. |
+| `mtime_ns` | integer | Modification time of the final dest in nanoseconds, read after the rename. |
+| `sha256` | string | `sha256:<hex>` of the dest, as verified against the plan. |
+| `verified_at` | string | UTC time of the record, `YYYY-MM-DDTHH:MM:SSZ`. |
+
+The file is one JSON object per line, compact, appended to on each run (it grows; it is not rewritten). For a path
+with several lines the latest one wins. A line is malformed when it is not a JSON object, has another
+`verified_version`, or has a member of the wrong type or a `sha256` that is not `sha256:` plus 64 lowercase hex
+digits. A malformed line is ignored and counted; it never makes a run fail.
+
+The cache is machine-local and git-ignored: `init` writes `local/` into `.stradler/.gitignore`, and adopt adds the
+line when it creates the cache if it is missing. It is not a record and holds no content; it may be deleted at any
+time, after which nothing is reused until the next copy run writes it again. `--no-record-verified` turns the
+recording off for a copy run.
+
+### Reuse by seal
+
+`stradler seal <dataset> --reuse-verified` takes the digest of a file from the latest cache line for its
+project-relative path when the file's size and `mtime_ns` equal the line's; the file is then not read for the
+seal's digests. Any other file (no line, or a size or mtime that differs) is read as usual. Without the flag nothing
+changes and the cache is not read. The flag is a seal option only; the `snapshot` command does not exist in the
+CLI. The Python API `write_snapshot(..., reuse=verified.Reuse(root))` offers the same reuse to code that calls it.
+
+A reused digest is a digest the cache states, not one computed from the bytes in this run. The final verify that
+ends every seal reads every file and is not affected by the flag, so a file whose bytes differ from the cache while
+its size and mtime still match is reported by that verify.
+
+When the flag is set, the seal's result reports how many digests were reused and how many cache lines were
+malformed:
+
+- text: `sealed; <dataset>: <result> (<counts>) [reused N cached digest(s), M cache warning(s)]`; with the flag off the
+  bracket is absent;
+- `--json`: the result object has the added keys `reused_digests` (N: distinct files whose digest came from the
+  cache) and `cache_warnings` (M: malformed cache lines read); both are absent without the flag.

@@ -222,6 +222,12 @@ The digest of a file is the SHA-256 of its bytes, in the form of WORKFLOWS 10.2 
 The size is the number of bytes. Both are taken from the bytes read by the writer; a file whose bytes change during
 sealing makes the writer fail.
 
+The one exception is a seal run with `--reuse-verified` (section 7.5, ADOPT.md "Verified digests"): a file whose size
+and modification time match its machine-local cache line takes its digest from that line and is not read by the
+writer, so a change that keeps both size and mtime is not seen by the writer. The document format does not change, and
+the final verify of the seal reads every file (section 7.5, step 5). This is an implementation choice, not part of
+the digest rules above.
+
 ## 5. Layouts
 
 Two layouts exist for version 2. A writer chooses one per snapshot (the choice rule is not fixed; section 10). The
@@ -498,6 +504,13 @@ implementation; proposed before):
 3. Files and directories lose their write bits.
 4. The version 2 document is written, with `previous` set to the current head of the dataset (section 3.4).
 5. The journal is removed and verify runs on the dataset. Exit 0 only when the seal is complete and verify matches.
+
+`stradler seal --reuse-verified` (default off) changes step 2 only: the file digests of the content digest and of the
+document may be taken from the machine-local cache written by `adopt` (ADOPT.md, "Verified digests"), for each file
+whose size and `mtime_ns` equal its latest cache line. The journal, the permission steps and the verify of step 5 are
+unchanged, and step 5 reads every file. The seal result then carries `reused_digests` (the number of distinct files
+whose digest came from the cache) and `cache_warnings` (the number of malformed cache lines read). These are result
+keys of the command; they are not part of any document, digest or check record.
 
 A rerun on a dataset with a journal recomputes the digest. If it equals the journal's, the seal finishes with the
 journal's own options; if not, it is refused and names `stradler seal --rollback <dataset>`, which restores the
