@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 
 from . import schema as sch
-from .project import Project, load_project
-from .workflow.areas import CORE_ROLES, GRADES, grade_rank
+from .project import MARKER, Project, load_project
+from .workflow.areas import CORE_ROLES, GRADES, AreaIndex, grade_rank
 
-__all__ = ["resolve_schema", "validate_path", "validate_project"]
+__all__ = ["resolve_schema", "validate_path", "validate_project", "validate_warnings"]
 
 _STORE_ADDON_KINDS = ("store", "remote")
 _MUTABILITIES = ("immutable", "sealed", "mutable")
@@ -244,3 +245,27 @@ def validate_path(start: str | Path = ".") -> tuple[Path, list[str]]:
     """
     prj = load_project(start)
     return prj.root, validate_project(prj)
+
+
+def validate_warnings(project: Project) -> list[str]:
+    """Return warnings that do not make a project invalid.
+
+    One warning per top-level entry that holds files under no declared area (the project marker and hidden
+    top-level entries, ``.stradler`` included, are skipped).
+    """
+    if not isinstance(project.structure, dict):
+        return []
+    index = AreaIndex(project.structure)
+    root = project.root
+    counts: dict[str, int] = {}
+    for dirpath, dirs, files in os.walk(root):
+        rel = Path(dirpath).relative_to(root).as_posix()
+        if rel == ".":
+            dirs[:] = sorted(d for d in dirs if not d.startswith("."))
+            files = [f for f in files if f != MARKER and not f.startswith(".")]
+        for f in files:
+            relpath = f if rel == "." else f"{rel}/{f}"
+            if index.area_of(relpath) is None:
+                top = relpath.split("/")[0]
+                counts[top] = counts.get(top, 0) + 1
+    return [f"{top}: {n} file(s) under no declared area" for top, n in sorted(counts.items())]

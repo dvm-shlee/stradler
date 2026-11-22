@@ -11,7 +11,7 @@ from . import __version__
 from .describe import agent_view, describe_project, render_agent_text, render_text
 from .init import InitError, init_project
 from .project import ProjectError, load_project
-from .validate import validate_path
+from .validate import validate_path, validate_warnings
 
 __all__ = ["build_parser", "main"]
 
@@ -177,6 +177,17 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.cmd == "adopt":
             from . import adopt
+            if args.plan and args.dry_run:
+                rep = adopt.dry_run_plan(args.plan, args.path)
+                if args.json:
+                    print(json.dumps(rep))
+                else:
+                    print("dry run: " + ("a real run would start" if rep["ok"] else "a real run would be refused"))
+                    for k in ("to_copy", "already_match", "dest_conflict", "source_missing", "source_changed",
+                              "dest_outside_areas"):
+                        print(f"  {k}: {rep[k]['files']} file(s), {rep[k]['bytes']} bytes")
+                    print(f"  free {rep['free_bytes']} bytes, to copy {rep['bytes_to_copy']} bytes")
+                return 0 if rep["ok"] else 1
             if args.plan:
                 prog = (lambda d: print(json.dumps(d), file=sys.stderr, flush=True)) if args.json else None
                 summary = adopt.adopt_plan(
@@ -201,17 +212,20 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps({"ok": True, "root": str(root)}) if args.json else f"initialised {root}")
             return 0
         root, problems = validate_path(args.path)
+        warnings = validate_warnings(load_project(root)) if not problems else []
     except (InitError, ProjectError) as e:
         print(json.dumps({"ok": False, "error": str(e)}) if args.json else f"error: {e}", file=sys.stderr if not args.json else sys.stdout)
         return 1
     if args.json:
-        print(json.dumps({"ok": not problems, "root": str(root), "problems": problems}))
+        print(json.dumps({"ok": not problems, "root": str(root), "problems": problems, "warnings": warnings}))
     elif problems:
         print(f"{root}: {len(problems)} problem(s)", file=sys.stderr)
         for m in problems:
             print(f"  {m}", file=sys.stderr)
     else:
         print(f"{root}: valid")
+    for m in warnings:
+        print(f"warning: {m}", file=sys.stderr)
     return 1 if problems else 0
 
 

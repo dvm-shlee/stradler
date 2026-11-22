@@ -58,7 +58,7 @@ def test_cli_init_validate_json(tmp_path, capsys):
     assert main(["init", "--template", str(TEMPLATE), "--project-id", "xid", "--json", str(target)]) == 0
     assert json.loads(capsys.readouterr().out)["ok"] is True
     assert main(["validate", "--json", str(target / "code")]) == 0
-    assert json.loads(capsys.readouterr().out) == {"ok": True, "root": str(target.resolve()), "problems": []}
+    assert json.loads(capsys.readouterr().out) == {"ok": True, "root": str(target.resolve()), "problems": [], "warnings": []}
     assert json.loads((target / "stradler.json").read_text())["project_id"] == "xid"
 
 

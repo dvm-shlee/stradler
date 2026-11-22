@@ -108,7 +108,7 @@ def test_cli_in_place(tmp_path, capsys):
 # ---- copy mode ----
 
 
-def plan_for(tmp_path: Path, files: dict[str, bytes], prefix: str = "raw") -> tuple[Path, list]:
+def plan_for(tmp_path: Path, files: dict[str, bytes], prefix: str = "code") -> tuple[Path, list]:
     src = tmp_path / "src"
     src.mkdir(exist_ok=True)
     plan = []
@@ -137,7 +137,7 @@ def test_copy_verifies_and_summarises(tmp_path, proj):
     rec = list((proj / ".stradler" / "adopt").glob("summary-*.json"))
     assert len(rec) == 1
     text = rec[0].read_text()
-    assert "src" not in text and "raw" not in text and json.loads(text)["copied"] == 2
+    assert "src" not in text and "code" not in text and json.loads(text)["copied"] == 2
 
 
 def test_copy_refuses_digest_mismatch(tmp_path, proj):
@@ -161,12 +161,12 @@ def test_copy_refuses_size_mismatch(tmp_path, proj):
 
 def test_copy_refuses_dest_with_other_content_before_copying(tmp_path, proj):
     f, _plan = plan_for(tmp_path, {"a": b"alpha", "b": b"beta"})
-    (proj / "raw").mkdir()
-    (proj / "raw" / "b").write_bytes(b"other")
+    (proj / "code").mkdir(exist_ok=True)
+    (proj / "code" / "b").write_bytes(b"other")
     with pytest.raises(AdoptError, match="other content"):
         adopt_plan(f, proj)
-    assert not (proj / "raw" / "a").exists()
-    assert (proj / "raw" / "b").read_bytes() == b"other"
+    assert not (proj / "code" / "a").exists()
+    assert (proj / "code" / "b").read_bytes() == b"other"
 
 
 def test_copy_resumes_after_interruption(tmp_path, proj, monkeypatch):
@@ -185,7 +185,7 @@ def test_copy_resumes_after_interruption(tmp_path, proj, monkeypatch):
     monkeypatch.setattr(adopt, "_copy_one", flaky)
     with pytest.raises(KeyboardInterrupt):
         adopt_plan(f, proj)
-    assert (proj / "raw" / "a").is_file() and not (proj / "raw" / "b").exists()
+    assert (proj / "code" / "a").is_file() and not (proj / "code" / "b").exists()
     monkeypatch.setattr(adopt, "_copy_one", real)
     s = adopt_plan(f, proj)
     assert (s["copied"], s["skipped"]) == (2, 1)
@@ -219,7 +219,7 @@ def test_cli_plan(tmp_path, proj, capsys):
     f, _ = plan_for(tmp_path, {"a": b"alpha"})
     assert main(["adopt", "--plan", str(f), "--json", str(proj)]) == 0
     assert json.loads(capsys.readouterr().out)["copied"] == 1
-    f.write_text(json.dumps([{"source": "/nonexistent/zz", "dest": "raw/z", "size": 1, "digest": "sha256:" + "1" * 64}]))
+    f.write_text(json.dumps([{"source": "/nonexistent/zz", "dest": "code/z", "size": 1, "digest": "sha256:" + "1" * 64}]))
     assert main(["adopt", "--plan", str(f), "--json", str(proj)]) == 1
 
 
@@ -259,7 +259,7 @@ def test_copy_keeps_mtime_and_atime(tmp_path, proj):
     f, plan = plan_for(tmp_path, {"a": b"alpha"})
     os.utime(plan[0]["source"], ns=(1_000_000_000_000_000_000, 1_704_153_600_000_000_000))
     adopt_plan(f, proj)
-    st = (proj / "raw" / "a").stat()
+    st = (proj / "code" / "a").stat()
     assert st.st_mtime_ns == 1_704_153_600_000_000_000
     assert st.st_atime_ns == 1_000_000_000_000_000_000
 
@@ -268,7 +268,7 @@ def test_no_keep_times_uses_copy_time(tmp_path, proj):
     f, plan = plan_for(tmp_path, {"a": b"alpha"})
     os.utime(plan[0]["source"], ns=(1_000_000_000_000_000_000, 1_704_153_600_000_000_000))
     adopt_plan(f, proj, keep_times=False)
-    assert (proj / "raw" / "a").stat().st_mtime_ns != 1_704_153_600_000_000_000
+    assert (proj / "code" / "a").stat().st_mtime_ns != 1_704_153_600_000_000_000
 
 
 def test_times_set_before_rename(tmp_path, proj, monkeypatch):
@@ -329,7 +329,7 @@ def test_cli_progress_on_stderr_only_with_json(tmp_path, proj, capsys):
     last = json.loads(cap.err.strip().splitlines()[-1])
     assert last["files_done"] == 1 and last["bytes_total"] == 5
     assert json.loads(cap.out)["interrupted"] is False
-    f2, _ = plan_for(tmp_path, {"b": b"beta"}, prefix="raw2")
+    f2, _ = plan_for(tmp_path, {"b": b"beta"}, prefix="records")
     assert main(["adopt", "--plan", str(f2), str(proj)]) == 0
     assert capsys.readouterr().err == ""
 
@@ -352,7 +352,7 @@ def test_clean_stop_on_signal_then_resume(tmp_path, proj, monkeypatch, capsys, s
     out = json.loads(capsys.readouterr().out)
     assert out["interrupted"] is True and out["ok"] is False and out["copied"] == 1
     assert not list(proj.rglob("*.stradler-part"))
-    assert (proj / "raw" / "a").is_file() and not (proj / "raw" / "b").exists()
+    assert (proj / "code" / "a").is_file() and not (proj / "code" / "b").exists()
     summaries = list((proj / ".stradler" / "adopt").glob("summary-*.json"))
     assert json.loads(summaries[0].read_text())["interrupted"] is True
     monkeypatch.setattr(adopt, "_copy_one", real)
@@ -371,4 +371,95 @@ def test_summary_stays_path_free(tmp_path, proj):
     f, _ = plan_for(tmp_path, {"a": b"alpha"})
     s = adopt_plan(f, proj)
     text = json.dumps(s)
-    assert str(tmp_path) not in text and "raw/" not in text
+    assert str(tmp_path) not in text and "code/" not in text
+
+
+# --------------------------------------------------------------------------- dry run and area check
+
+
+def _dry(f, proj, capsys, *extra):
+    code = main(["adopt", "--plan", str(f), "--dry-run", "--json", *extra, str(proj)])
+    return code, json.loads(capsys.readouterr().out)
+
+
+def test_dry_run_clean_copies_nothing(tmp_path, proj, capsys):
+    f, plan = plan_for(tmp_path, {"a": b"alpha", "b": b"beta"})
+    before = tree_state(proj)
+    code, rep = _dry(f, proj, capsys)
+    assert code == 0 and rep["ok"] is True and rep["dry_run"] is True
+    assert rep["to_copy"] == {"files": 2, "bytes": 9} and rep["bytes_to_copy"] == 9
+    assert rep["enough_space"] is True and rep["free_bytes"] > 0
+    assert tree_state(proj) == before
+    assert not (proj / ".stradler" / "adopt").exists()
+    assert str(tmp_path) not in json.dumps(rep)
+
+
+def test_dry_run_lists_every_problem_class(tmp_path, proj, capsys):
+    f, plan = plan_for(tmp_path, {n: b"data-" + n.encode() for n in "abcdef"})
+    adopt_plan(f, proj)  # a is a match after this run; reset the rest
+    for n in "bcdef":
+        (proj / "code" / n).unlink()
+    (proj / "code" / "b").write_bytes(b"other")                 # dest_conflict
+    (tmp_path / "src" / "c").unlink()                           # source_missing
+    (tmp_path / "src" / "d").write_bytes(b"much longer data")  # source_changed
+    plan[4]["dest"] = "elsewhere/e"                             # dest_outside_areas
+    plan.append(dict(plan[5], dest="code/g"))                   # to_copy (f copied under a second dest)
+    f.write_text(json.dumps(plan))
+    code, rep = _dry(f, proj, capsys)
+    assert code == 1 and rep["ok"] is False
+    for k in ("dest_conflict", "source_missing", "source_changed", "dest_outside_areas", "to_copy"):
+        assert rep[k]["files"] == 1, k
+    assert rep["already_match"]["files"] == 0
+    assert rep["source_changed"]["bytes"] == plan[3]["size"]
+    assert not (proj / "elsewhere").exists() and not (proj / "code" / "g").exists()
+
+
+def test_dry_run_already_match_is_not_a_problem(tmp_path, proj, capsys):
+    f, _ = plan_for(tmp_path, {"a": b"alpha"})
+    adopt_plan(f, proj)
+    code, rep = _dry(f, proj, capsys)
+    assert code == 0 and rep["already_match"] == {"files": 1, "bytes": 5} and rep["to_copy"]["files"] == 0
+
+
+def test_dry_run_not_enough_space(tmp_path, proj, capsys, monkeypatch):
+    import collections
+    f, _ = plan_for(tmp_path, {"a": b"alpha"})
+    usage = collections.namedtuple("usage", "total used free")
+    monkeypatch.setattr(adopt.shutil, "disk_usage", lambda p: usage(100, 100, 2))
+    code, rep = _dry(f, proj, capsys)
+    assert code == 1 and rep["enough_space"] is False and rep["free_bytes"] == 2 and rep["to_copy"]["files"] == 1
+
+
+def test_dry_run_text_output(tmp_path, proj, capsys):
+    f, _ = plan_for(tmp_path, {"a": b"alpha"})
+    assert main(["adopt", "--plan", str(f), "--dry-run", str(proj)]) == 0
+    out = capsys.readouterr().out
+    assert "a real run would start" in out and "to_copy: 1 file(s), 5 bytes" in out
+
+
+def test_real_run_refuses_dest_outside_areas_before_copying(tmp_path, proj):
+    f, plan = plan_for(tmp_path, {"a": b"alpha", "b": b"beta"})
+    plan[1]["dest"] = "elsewhere/b"
+    f.write_text(json.dumps(plan))
+    with pytest.raises(AdoptError, match="under no declared area"):
+        adopt_plan(f, proj)
+    assert not (proj / "code" / "a").exists() and not (proj / "elsewhere").exists()
+
+
+def test_validate_warns_about_files_under_no_area(tmp_path, proj, capsys):
+    (proj / "elsewhere").mkdir()
+    (proj / "elsewhere" / "a.txt").write_text("x")
+    (proj / "elsewhere" / "b.txt").write_text("x")
+    (proj / "loose.txt").write_text("x")
+    (proj / "code" / "ok.txt").write_text("x")
+    code = main(["validate", "--json", str(proj)])
+    doc = json.loads(capsys.readouterr().out)
+    assert code == 0 and doc["ok"] is True and doc["problems"] == []
+    assert doc["warnings"] == ["elsewhere: 2 file(s) under no declared area",
+                               "loose.txt: 1 file(s) under no declared area"]
+
+
+def test_validate_no_warning_when_all_files_in_areas(tmp_path, proj, capsys):
+    (proj / "code" / "ok.txt").write_text("x")
+    assert main(["validate", "--json", str(proj)]) == 0
+    assert json.loads(capsys.readouterr().out)["warnings"] == []

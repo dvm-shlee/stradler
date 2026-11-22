@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import signal
 import threading
 import time
@@ -18,10 +19,11 @@ from typing import Any
 
 from . import schema as sch
 from .init import SPEC_VERSION, InitError, _materialize, load_template
-from .project import CONFIG_DIR, MARKER, find_root
+from .project import CONFIG_DIR, MARKER, find_root, load_project
 from .snapshot import SnapshotError, file_digest
+from .workflow.areas import AreaIndex
 
-__all__ = ["AdoptError", "adopt_in_place", "adopt_plan", "load_plan", "parse_rate", "propose"]
+__all__ = ["AdoptError", "adopt_in_place", "adopt_plan", "dry_run_plan", "load_plan", "parse_rate", "propose"]
 
 _NAME = re.compile(r"[^A-Za-z0-9_-]")
 _DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -191,6 +193,72 @@ def _copy_one(source: Path, tmp: Path, on_chunk: Any = None) -> None:
                 on_chunk(len(buf))
 
 
+def _outside_areas(root: Path, plan: list[dict[str, Any]]) -> list[str]:
+    """Return the dests of ``plan`` that lie under no declared area (same rule as ``validate``)."""
+    index = AreaIndex(load_project(root).structure)
+    return [e["dest"] for e in plan if index.area_of(e["dest"]) is None]
+
+
+def dry_run_plan(plan_file: str | Path, project: str | Path = ".") -> dict[str, Any]:
+    """Run every pre-check of a copy plan, copy nothing and report every problem.
+
+    Each plan entry is counted in every class that applies: ``dest_outside_areas`` (dest under no declared
+    area), ``dest_conflict`` (dest exists with other content, or leaves the project), ``source_missing``,
+    ``source_changed`` (source size differs from the plan), ``already_match`` (dest already holds the planned
+    content) and ``to_copy`` (no problem; a real run would copy it). Digests of sources are not read.
+
+    Returns
+    -------
+    dict
+        ``{ok, dry_run, files, <class>: {files, bytes}, free_bytes, bytes_to_copy, enough_space}``; ``ok``
+        is true only when a real run would start (no class other than ``to_copy`` and ``already_match`` is
+        non-empty and the free space at the project covers ``bytes_to_copy``). It holds counts and bytes,
+        no paths.
+    """
+    root = find_root(project)
+    plan = load_plan(plan_file)
+    real_root = root.resolve()
+    outside = set(_outside_areas(root, plan))
+    names = ("to_copy", "already_match", "dest_conflict", "source_missing", "source_changed", "dest_outside_areas")
+    cls: dict[str, list[int]] = {n: [0, 0] for n in names}
+
+    def add(name: str, size: int) -> None:
+        cls[name][0] += 1
+        cls[name][1] += size
+
+    for e in plan:
+        size = e["size"]
+        dest = root / e["dest"]
+        bad = e["dest"] in outside
+        if bad:
+            add("dest_outside_areas", size)
+        parent = dest.parent.resolve()
+        if (parent != real_root and real_root not in parent.parents) or dest.is_symlink():
+            add("dest_conflict", size)
+            continue
+        if dest.exists():
+            if dest.is_file() and _verify(dest, size, e["digest"]):
+                add("already_match", size)
+            else:
+                add("dest_conflict", size)
+            continue
+        src = Path(e["source"])
+        if not src.is_file():
+            add("source_missing", size)
+        elif src.stat().st_size != size:
+            add("source_changed", size)
+        elif not bad:
+            add("to_copy", size)
+    to_copy_bytes = cls["to_copy"][1]
+    free = shutil.disk_usage(root).free
+    enough = free >= to_copy_bytes
+    problems = any(cls[n][0] for n in names if n not in ("to_copy", "already_match"))
+    out: dict[str, Any] = {"ok": not problems and enough, "dry_run": True, "files": len(plan)}
+    out.update({n: {"files": c[0], "bytes": c[1]} for n, c in cls.items()})
+    out.update(free_bytes=free, bytes_to_copy=to_copy_bytes, enough_space=enough)
+    return out
+
+
 def adopt_plan(
     plan_file: str | Path,
     project: str | Path = ".",
@@ -202,7 +270,7 @@ def adopt_plan(
 ) -> dict[str, Any]:
     """Carry out a copy plan inside a project (copy mode).
 
-    Every dest is checked first: one that exists with other content than the plan states refuses the whole
+    Every dest is checked first: one under no declared area (same rule as ``validate``) or one that exists with other content than the plan states refuses the whole
     plan before anything is copied. A dest that already matches is skipped, so a rerun after an interruption
     finishes the rest. Each file is copied to a temporary name, verified for size and sha256, given the
     source's access and modification times (``keep_times``) and then renamed; a mismatch removes the
@@ -234,6 +302,9 @@ def adopt_plan(
     todo: list[tuple[Path, Path, dict[str, Any]]] = []
     skipped = skipped_bytes = 0
     real_root = root.resolve()
+    outside = _outside_areas(root, plan)
+    if outside:
+        raise AdoptError(f"{len(outside)} dest(s) under no declared area, first: {outside[0]}")
     for e in plan:
         dest = root / e["dest"]
         parent = dest.parent.resolve()
